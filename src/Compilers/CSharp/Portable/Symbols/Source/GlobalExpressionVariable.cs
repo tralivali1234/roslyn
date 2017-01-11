@@ -40,9 +40,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 FieldSymbol containingFieldOpt,
                 SyntaxNode nodeToBind)
         {
-            Debug.Assert(nodeToBind.Kind() == SyntaxKind.VariableDeclarator
-                || nodeToBind is ExpressionSyntax
-                || nodeToBind.Kind() == SyntaxKind.VariableComponentAssignment);
+            Debug.Assert(nodeToBind.Kind() == SyntaxKind.VariableDeclarator || nodeToBind is ExpressionSyntax);
+
             var syntaxReference = syntax.GetReference();
             return typeSyntax.IsVar
                 ? new InferrableGlobalExpressionVariable(containingType, modifiers, typeSyntax, name, syntaxReference, location, containingFieldOpt, nodeToBind)
@@ -105,8 +104,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
         /// <summary>
         /// Can add some diagnostics into <paramref name="diagnostics"/>. 
+        /// Returns the type that it actually locks onto (it's possible that it had already locked onto ErrorType).
         /// </summary>
-        private void SetType(CSharpCompilation compilation, DiagnosticBag diagnostics, TypeSymbol type)
+        private TypeSymbol SetType(CSharpCompilation compilation, DiagnosticBag diagnostics, TypeSymbol type)
         {
             TypeSymbol originalType = _lazyType;
 
@@ -124,14 +124,16 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 compilation.DeclarationDiagnostics.AddRange(diagnostics);
                 state.NotePartComplete(CompletionPart.Type);
             }
+            return _lazyType;
         }
 
         /// <summary>
-        /// Can add some diagnostics into <paramref name="diagnostics"/>. 
+        /// Can add some diagnostics into <paramref name="diagnostics"/>.
+        /// Returns the type that it actually locks onto (it's possible that it had already locked onto ErrorType).
         /// </summary>
-        internal void SetType(TypeSymbol type, DiagnosticBag diagnostics)
+        internal TypeSymbol SetType(TypeSymbol type, DiagnosticBag diagnostics)
         {
-            SetType(DeclaringCompilation, diagnostics, type);
+            return SetType(DeclaringCompilation, diagnostics, type);
         }
 
         protected virtual void InferFieldType(ConsList<FieldSymbol> fieldsBeingBound, Binder binder)
@@ -155,9 +157,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 SyntaxNode nodeToBind)
                 : base(containingType, modifiers, typeSyntax, name, syntax, location)
             {
-                Debug.Assert(nodeToBind.Kind() == SyntaxKind.VariableDeclarator
-                    || nodeToBind is ExpressionSyntax
-                    || nodeToBind.Kind() == SyntaxKind.VariableComponentAssignment);
+                Debug.Assert(nodeToBind.Kind() == SyntaxKind.VariableDeclarator || nodeToBind is ExpressionSyntax);
 
                 _containingFieldOpt = containingFieldOpt;
                 _nodeToBind = nodeToBind.GetReference();
@@ -184,14 +184,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         // int x, y[out var Z, 1 is int I];
                         // for (int x, y[out var Z, 1 is int I]; ;) {}
                         binder.BindDeclaratorArguments((VariableDeclaratorSyntax)nodeToBind, diagnostics);
-                        break;
-
-                    case SyntaxKind.VariableComponentAssignment:
-                        var deconstruction = (VariableComponentAssignmentSyntax)nodeToBind;
-
-                        binder.BindDeconstructionDeclaration(deconstruction, deconstruction.VariableComponent,
-                            deconstruction.Value, diagnostics);
-
                         break;
 
                     default:

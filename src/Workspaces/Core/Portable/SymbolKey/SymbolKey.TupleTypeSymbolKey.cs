@@ -13,34 +13,79 @@ namespace Microsoft.CodeAnalysis
             public static void Create(INamedTypeSymbol symbol, SymbolKeyWriter visitor)
             {
                 Debug.Assert(symbol.IsTupleType);
-                visitor.WriteSymbolKey(symbol.TupleUnderlyingType);
-                visitor.WriteStringArray(symbol.TupleElementNames);
-            }
 
-            public static int GetHashCode(GetHashCodeReader reader)
-            {
-                // The hash of the underlying type is good enough, we don't need to include names.
-                var symbolKeyHashCode = reader.ReadSymbolKey();
-                var elementNames = reader.ReadStringArray();
 
-                return symbolKeyHashCode;
+                var friendlyNames = ArrayBuilder<string>.GetInstance();
+                var locations = ArrayBuilder<Location>.GetInstance();
+
+                var isError = symbol.TupleUnderlyingType.TypeKind == TypeKind.Error;
+                visitor.WriteBoolean(isError);
+
+                if (isError)
+                {
+                    var elementTypes = ArrayBuilder<ISymbol>.GetInstance();
+
+                    foreach (var element in symbol.TupleElements)
+                    {
+                        elementTypes.Add(element.Type);
+                    }
+
+                    visitor.WriteSymbolKeyArray(elementTypes.ToImmutableAndFree());
+                }
+                else
+                {
+                    visitor.WriteSymbolKey(symbol.TupleUnderlyingType);
+                }
+
+                foreach (var element in symbol.TupleElements)
+                {
+                    friendlyNames.Add(element.IsImplicitlyDeclared ? null : element.Name);
+                    locations.Add(element.Locations.FirstOrDefault());
+                }
+
+                visitor.WriteStringArray(friendlyNames.ToImmutableAndFree());
+                visitor.WriteLocationArray(locations.ToImmutableAndFree());
             }
 
             public static SymbolKeyResolution Resolve(SymbolKeyReader reader)
             {
-                var underlyingTypeResolution = reader.ReadSymbolKey();
-                var tupleElementNames = reader.ReadStringArray();
+                var isError = reader.ReadBoolean();
+                if (isError)
+                {
+                    var elementTypes = reader.ReadSymbolKeyArray().SelectAsArray(r => r.GetAnySymbol() as ITypeSymbol);
+                    var elementNames = reader.ReadStringArray();
+                    var elementLocations = reader.ReadLocationArray();
 
-                try
-                {
-                    var result = GetAllSymbols<INamedTypeSymbol>(underlyingTypeResolution).Select(
-                        t => reader.Compilation.CreateTupleTypeSymbol(t, tupleElementNames));
-                    return CreateSymbolInfo(result);
+                    if (!elementTypes.Any(t => t == null))
+                    {
+                        try
+                        {
+                            var result = reader.Compilation.CreateTupleTypeSymbol(
+                                elementTypes, elementNames, elementLocations);
+                            return new SymbolKeyResolution(result);
+                        }
+                        catch (ArgumentException)
+                        {
+                        }
+                    }
                 }
-                catch (ArgumentException)
+                else
                 {
-                    return new SymbolKeyResolution(reader.Compilation.ObjectType);
+                    var underlyingTypeResolution = reader.ReadSymbolKey();
+                    var elementNames = reader.ReadStringArray();
+                    var elementLocations = reader.ReadLocationArray();
+                    try
+                    {
+                        var result = GetAllSymbols<INamedTypeSymbol>(underlyingTypeResolution).Select(
+                            t => reader.Compilation.CreateTupleTypeSymbol(t, elementNames, elementLocations));
+                        return CreateSymbolInfo(result);
+                    }
+                    catch (ArgumentException)
+                    {
+                    }
                 }
+
+                return new SymbolKeyResolution(reader.Compilation.ObjectType);
             }
         }
     }

@@ -66,7 +66,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Completion.Providers
             Dim text = Await document.GetTextAsync(cancellationToken).ConfigureAwait(False)
 
             For Each parameter In unspecifiedParameters
-                context.AddItem(SymbolCompletionItem.Create(
+                context.AddItem(SymbolCompletionItem.CreateWithSymbolId(
                     displayText:=parameter.Name & s_colonEquals,
                     insertionText:=parameter.Name.ToIdentifierToken().ToString() & s_colonEquals,
                     symbol:=parameter,
@@ -80,7 +80,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Completion.Providers
             WithFilterCharacterRule(CharacterSetModificationRule.Create(CharacterSetModificationKind.Remove, ":"c, "="c)).
             WithCommitCharacterRule(CharacterSetModificationRule.Create(CharacterSetModificationKind.Add, ":"c, "="c))
 
-        Public Overrides Function GetDescriptionAsync(document As Document, item As CompletionItem, cancellationToken As CancellationToken) As Task(Of CompletionDescription)
+        Protected Overrides Function GetDescriptionWorkerAsync(document As Document, item As CompletionItem, cancellationToken As CancellationToken) As Task(Of CompletionDescription)
             Return SymbolCompletionItem.GetDescriptionAsync(item, document, cancellationToken)
         End Function
 

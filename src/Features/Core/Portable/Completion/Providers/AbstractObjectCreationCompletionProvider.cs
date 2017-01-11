@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis.Shared.Extensions;
 using Microsoft.CodeAnalysis.Shared.Extensions.ContextQuery;
 using Roslyn.Utilities;
 using Microsoft.CodeAnalysis.Shared.Utilities;
+using System;
 
 namespace Microsoft.CodeAnalysis.Completion.Providers
 {
@@ -22,14 +23,12 @@ namespace Microsoft.CodeAnalysis.Completion.Providers
         /// </summary>
         protected abstract SyntaxNode GetObjectCreationNewExpression(SyntaxTree tree, int position, CancellationToken cancellationToken);
 
-        private static readonly ImmutableArray<string> s_Tags = ImmutableArray.Create(CompletionTags.ObjectCreation);
-
         protected override CompletionItem CreateItem(
             string displayText, string insertionText, List<ISymbol> symbols,
             SyntaxContext context, bool preselect,
             SupportedPlatformData supportedPlatformData)
         {
-            return SymbolCompletionItem.Create(
+            return SymbolCompletionItem.CreateWithSymbolId(
                 displayText: displayText,
                 insertionText: insertionText,
                 filterText: GetFilterText(symbols[0], displayText, context),
@@ -37,21 +36,21 @@ namespace Microsoft.CodeAnalysis.Completion.Providers
                 symbols: symbols,
                 supportedPlatforms: supportedPlatformData,
                 matchPriority: MatchPriority.Preselect, // Always preselect
-                tags: s_Tags,
                 rules: GetCompletionItemRules(symbols, context));
         }
 
-        protected override Task<IEnumerable<ISymbol>> GetSymbolsWorker(SyntaxContext context, int position, OptionSet options, CancellationToken cancellationToken)
+        protected override Task<ImmutableArray<ISymbol>> GetSymbolsWorker(SyntaxContext context, int position, OptionSet options, CancellationToken cancellationToken)
         {
-            return SpecializedTasks.EmptyEnumerable<ISymbol>();
+            return SpecializedTasks.EmptyImmutableArray<ISymbol>();
         }
 
-        protected override Task<IEnumerable<ISymbol>> GetPreselectedSymbolsWorker(SyntaxContext context, int position, OptionSet options, CancellationToken cancellationToken)
+        protected override Task<ImmutableArray<ISymbol>> GetPreselectedSymbolsWorker(
+            SyntaxContext context, int position, OptionSet options, CancellationToken cancellationToken)
         {
             var newExpression = this.GetObjectCreationNewExpression(context.SyntaxTree, position, cancellationToken);
             if (newExpression == null)
             {
-                return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                return SpecializedTasks.EmptyImmutableArray<ISymbol>();
             }
 
             var typeInferenceService = context.GetLanguageService<ITypeInferenceService>();
@@ -69,7 +68,7 @@ namespace Microsoft.CodeAnalysis.Completion.Providers
 
             if (type == null)
             {
-                return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                return SpecializedTasks.EmptyImmutableArray<ISymbol>();
             }
 
             // Unwrap nullable
@@ -80,17 +79,17 @@ namespace Microsoft.CodeAnalysis.Completion.Providers
 
             if (type.SpecialType == SpecialType.System_Void)
             {
-                return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                return SpecializedTasks.EmptyImmutableArray<ISymbol>();
             }
 
             if (type.ContainsAnonymousType())
             {
-                return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                return SpecializedTasks.EmptyImmutableArray<ISymbol>();
             }
 
             if (!type.CanBeReferencedByName)
             {
-                return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                return SpecializedTasks.EmptyImmutableArray<ISymbol>();
             }
 
             // Normally the user can't say things like "new IList".  Except for "IList[] x = new |".
@@ -103,30 +102,30 @@ namespace Microsoft.CodeAnalysis.Completion.Providers
                     type.TypeKind == TypeKind.Dynamic ||
                     type.IsAbstract)
                 {
-                    return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                    return SpecializedTasks.EmptyImmutableArray<ISymbol>();
                 }
 
                 if (type.TypeKind == TypeKind.TypeParameter &&
                     !((ITypeParameterSymbol)type).HasConstructorConstraint)
                 {
-                    return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                    return SpecializedTasks.EmptyImmutableArray<ISymbol>();
                 }
             }
 
             if (!type.IsEditorBrowsable(options.GetOption(RecommendationOptions.HideAdvancedMembers, context.SemanticModel.Language), context.SemanticModel.Compilation))
             {
-                return SpecializedTasks.EmptyEnumerable<ISymbol>();
+                return SpecializedTasks.EmptyImmutableArray<ISymbol>();
             }
 
-            return Task.FromResult(SpecializedCollections.SingletonEnumerable((ISymbol)type));
+            return Task.FromResult(ImmutableArray.Create((ISymbol)type));
         }
 
-        protected override ValueTuple<string, string> GetDisplayAndInsertionText(
+        protected override(string displayText, string insertionText) GetDisplayAndInsertionText(
             ISymbol symbol, SyntaxContext context)
         {
             var displayService = context.GetLanguageService<ISymbolDisplayService>();
             var displayString = displayService.ToMinimalDisplayString(context.SemanticModel, context.Position, symbol);
-            return ValueTuple.Create(displayString, displayString);
+            return (displayString, displayString);
         }
     }
 }

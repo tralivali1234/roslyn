@@ -116,7 +116,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 deterministic:=deterministic,
                 currentLocalTime:=Nothing,
                 suppressEmbeddedDeclarations:=False,
-                extendedCustomDebugInformation:=True,
                 debugPlusMode:=False,
                 xmlReferenceResolver:=xmlReferenceResolver,
                 sourceReferenceResolver:=sourceReferenceResolver,
@@ -156,7 +155,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
             deterministic As Boolean,
             currentLocalTime As Date,
             suppressEmbeddedDeclarations As Boolean,
-            extendedCustomDebugInformation As Boolean,
             debugPlusMode As Boolean,
             xmlReferenceResolver As XmlReferenceResolver,
             sourceReferenceResolver As SourceReferenceResolver,
@@ -186,7 +184,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 concurrentBuild:=concurrentBuild,
                 deterministic:=deterministic,
                 currentLocalTime:=currentLocalTime,
-                extendedCustomDebugInformation:=extendedCustomDebugInformation,
                 debugPlusMode:=debugPlusMode,
                 xmlReferenceResolver:=xmlReferenceResolver,
                 sourceReferenceResolver:=sourceReferenceResolver,
@@ -238,7 +235,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 concurrentBuild:=other.ConcurrentBuild,
                 deterministic:=other.Deterministic,
                 currentLocalTime:=other.CurrentLocalTime,
-                extendedCustomDebugInformation:=other.ExtendedCustomDebugInformation,
                 debugPlusMode:=other.DebugPlusMode,
                 xmlReferenceResolver:=other.XmlReferenceResolver,
                 sourceReferenceResolver:=other.SourceReferenceResolver,
@@ -249,6 +245,12 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 referencesSupersedeLowerVersions:=other.ReferencesSupersedeLowerVersions,
                 publicSign:=other.PublicSign)
         End Sub
+
+        Public Overrides ReadOnly Property Language As String
+            Get
+                Return LanguageNames.VisualBasic
+            End Get
+        End Property
 
         Friend Overrides Function GetImports() As ImmutableArray(Of String)
             ' TODO: implement (only called from VBI) https://github.com/dotnet/roslyn/issues/5854
@@ -362,7 +364,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
         ''' Compilation level parse options.  Used when compiling synthetic embedded code such as My template
         ''' </summary>
         ''' <returns>The Parse Options Setting.</returns>
-        Friend ReadOnly Property ParseOptions As VisualBasicParseOptions
+        Public ReadOnly Property ParseOptions As VisualBasicParseOptions
             Get
                 Return _parseOptions
             End Get
@@ -574,19 +576,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
             End If
 
             Return New VisualBasicCompilationOptions(Me) With {.CurrentLocalTime_internal_protected_set = value}
-        End Function
-
-        ''' <summary>
-        ''' Creates a new VisualBasicCompilationOptions instance with a different extended custom debug information specified.
-        ''' </summary>
-        ''' <param name="extendedCustomDebugInformation">The extended custom debug information setting. </param>        
-        ''' <returns>A new instance of VisualBasicCompilationOptions, if the extended custom debug information is different; otherwise current instance.</returns>        
-        Friend Function WithExtendedCustomDebugInformation(extendedCustomDebugInformation As Boolean) As VisualBasicCompilationOptions
-            If extendedCustomDebugInformation = Me.ExtendedCustomDebugInformation Then
-                Return Me
-            End If
-
-            Return New VisualBasicCompilationOptions(Me) With {.ExtendedCustomDebugInformation_internal_protected_set = extendedCustomDebugInformation}
         End Function
 
         ''' <summary>
@@ -905,10 +894,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
             End If
 
             If ModuleName IsNot Nothing Then
-                Dim e As Exception = MetadataHelpers.CheckAssemblyOrModuleName(ModuleName, NameOf(ModuleName))
-                If e IsNot Nothing Then
-                    builder.Add(Diagnostic.Create(MessageProvider.Instance, ERRID.ERR_BadCompilationOption, e.Message))
-                End If
+                MetadataHelpers.CheckAssemblyOrModuleName(ModuleName, MessageProvider.Instance, ERRID.ERR_BadModuleName, builder)
             End If
 
             If Not OutputKind.IsValid() Then
@@ -1188,7 +1174,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 deterministic:=deterministic,
                 currentLocalTime:=Nothing,
                 suppressEmbeddedDeclarations:=False,
-                extendedCustomDebugInformation:=True,
                 debugPlusMode:=False,
                 xmlReferenceResolver:=xmlReferenceResolver,
                 sourceReferenceResolver:=sourceReferenceResolver,

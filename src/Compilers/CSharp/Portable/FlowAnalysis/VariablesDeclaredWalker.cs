@@ -122,16 +122,24 @@ namespace Microsoft.CodeAnalysis.CSharp
             return base.VisitLocalFunctionStatement(node);
         }
 
-        public override BoundNode VisitForEachStatement(BoundForEachStatement node)
+        public override void VisitForEachIterationVariables(BoundForEachStatement node)
         {
             if (IsInside)
             {
-                _variablesDeclared.Add(node.IterationVariableOpt);
+                var deconstructionAssignment = node.DeconstructionOpt?.DeconstructionAssignment;
+
+                if (deconstructionAssignment == null)
+                {
+                    // regular, not deconstructing, foreach declares exactly one iteration variable
+                    _variablesDeclared.Add(node.IterationVariables.Single());
+                }
+                else
+                {
+                    // deconstruction foreach declares multiple variables
+                   deconstructionAssignment.Left.VisitAllElements((x, self) => self.Visit(x), this);
+                }
             }
-
-            return base.VisitForEachStatement(node);
         }
-
 
         protected override void VisitCatchBlock(BoundCatchBlock catchBlock, ref LocalState finallyState)
         {
@@ -163,24 +171,17 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         protected override void VisitLvalue(BoundLocal node)
         {
-            CheckOutVarDeclaration(node);
-            base.VisitLvalue(node);
-        }
-
-        private void CheckOutVarDeclaration(BoundLocal node)
-        {
-            if (IsInside &&
-                !node.WasCompilerGenerated && node.Syntax.Kind() == SyntaxKind.DeclarationExpression &&
-                ((DeclarationExpressionSyntax)node.Syntax).Identifier() == node.LocalSymbol.IdentifierToken)
-            {
-                _variablesDeclared.Add(node.LocalSymbol);
-            }
+            VisitLocal(node);
         }
 
         public override BoundNode VisitLocal(BoundLocal node)
         {
-            CheckOutVarDeclaration(node);
-            return base.VisitLocal(node);
+            if (IsInside && node.IsDeclaration)
+            {
+                _variablesDeclared.Add(node.LocalSymbol);
+            }
+
+            return null;
         }
     }
 }

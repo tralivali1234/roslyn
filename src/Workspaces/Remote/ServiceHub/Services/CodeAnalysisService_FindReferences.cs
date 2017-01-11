@@ -1,24 +1,18 @@
 ﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
-using System;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Execution;
 using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.CodeAnalysis.Remote.Arguments;
 
 namespace Microsoft.CodeAnalysis.Remote
 {
     // root level service for all Roslyn services
-    internal partial class CodeAnalysisService
+    internal partial class CodeAnalysisService : IRemoteSymbolFinder
     {
-        public async Task FindReferencesAsync(
-            SerializableSymbolAndProjectId symbolAndProjectIdArg, SerializableDocumentId[] documentArgs, 
-            byte[] solutionChecksum)
+        public async Task FindReferencesAsync(SerializableSymbolAndProjectId symbolAndProjectIdArg, SerializableDocumentId[] documentArgs)
         {
-            var solution = await RoslynServices.SolutionService.GetSolutionAsync(
-                new Checksum(solutionChecksum), CancellationToken).ConfigureAwait(false);
+            var solution = await GetSolutionAsync().ConfigureAwait(false);
 
             var symbolAndProjectId = await symbolAndProjectIdArg.RehydrateAsync(
                 solution, CancellationToken).ConfigureAwait(false);
@@ -27,7 +21,7 @@ namespace Microsoft.CodeAnalysis.Remote
                                          .ToImmutableHashSet();
 
             var progressCallback = new ProgressCallback(this);
-            await DefaultSymbolFinderEngineService.FindReferencesInCurrentProcessAsync(
+            await SymbolFinder.FindReferencesInCurrentProcessAsync(
                 symbolAndProjectId, solution, progressCallback, documents, CancellationToken).ConfigureAwait(false);
         }
 
@@ -40,7 +34,7 @@ namespace Microsoft.CodeAnalysis.Remote
                 _service = service;
             }
 
-            public Task OnStartedAsync() 
+            public Task OnStartedAsync()
                 => _service.Rpc.InvokeAsync(nameof(OnStartedAsync));
 
             public Task OnCompletedAsync()
@@ -50,11 +44,11 @@ namespace Microsoft.CodeAnalysis.Remote
                 => _service.Rpc.InvokeAsync(nameof(ReportProgressAsync), current, maximum);
 
             public Task OnFindInDocumentStartedAsync(Document document)
-                => _service.Rpc.InvokeAsync(nameof(OnFindInDocumentStartedAsync), 
+                => _service.Rpc.InvokeAsync(nameof(OnFindInDocumentStartedAsync),
                     SerializableDocumentId.Dehydrate(document));
 
             public Task OnFindInDocumentCompletedAsync(Document document)
-                => _service.Rpc.InvokeAsync(nameof(OnFindInDocumentCompletedAsync), 
+                => _service.Rpc.InvokeAsync(nameof(OnFindInDocumentCompletedAsync),
                     SerializableDocumentId.Dehydrate(document));
 
             public Task OnDefinitionFoundAsync(SymbolAndProjectId definition)
@@ -69,5 +63,6 @@ namespace Microsoft.CodeAnalysis.Remote
                     SerializableReferenceLocation.Dehydrate(reference));
             }
         }
+
     }
 }

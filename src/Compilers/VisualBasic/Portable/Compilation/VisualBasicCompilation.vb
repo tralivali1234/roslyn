@@ -366,8 +366,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 options = New VisualBasicCompilationOptions(OutputKind.ConsoleApplication)
             End If
 
-            CheckAssemblyName(assemblyName)
-
             Dim validatedReferences = ValidateReferences(Of VisualBasicCompilationReference)(references)
 
             Dim c As VisualBasicCompilation = Nothing
@@ -535,8 +533,6 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
         ''' Creates a new compilation with the specified name.
         ''' </summary>
         Public Shadows Function WithAssemblyName(assemblyName As String) As VisualBasicCompilation
-            CheckAssemblyName(assemblyName)
-
             ' Can't reuse references since the source assembly name changed and the referenced symbols might 
             ' have internals-visible-to relationship with this compilation or they might had a circular reference 
             ' to this compilation.
@@ -1191,7 +1187,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
             End Get
         End Property
 
-        Friend Overrides ReadOnly Property ReferenceDirectiveMap As IDictionary(Of ValueTuple(Of String, String), MetadataReference)
+        Friend Overrides ReadOnly Property ReferenceDirectiveMap As IDictionary(Of (path As String, content As String), MetadataReference)
             Get
                 Return GetBoundReferenceManager().ReferenceDirectiveMap
             End Get
@@ -1942,6 +1938,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
 
             ' Add declaration errors
             If (stage = CompilationStage.Declare OrElse stage > CompilationStage.Declare AndAlso includeEarlierStages) Then
+                CheckAssemblyName(builder)
                 builder.AddRange(Options.Errors)
                 builder.AddRange(GetBoundReferenceManager().Diagnostics)
                 builder.AddRange(SourceAssembly.GetAllDeclarationErrors(cancellationToken))
@@ -2569,60 +2566,42 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
             End Get
         End Property
 
-        Public Overrides Function CreateErrorTypeSymbol(container As INamespaceOrTypeSymbol, name As String, arity As Integer) As INamedTypeSymbol
-            Return New ExtendedErrorTypeSymbol(DirectCast(container, NamespaceOrTypeSymbol), name, arity)
+        Protected Overrides Function CommonCreateErrorTypeSymbol(container As INamespaceOrTypeSymbol, name As String, arity As Integer) As INamedTypeSymbol
+            Return New ExtendedErrorTypeSymbol(
+                       container.EnsureVbSymbolOrNothing(Of NamespaceOrTypeSymbol)(NameOf(container)),
+                       name, arity)
+        End Function
+
+        Protected Overrides Function CommonCreateErrorNamespaceSymbol(container As INamespaceSymbol, name As String) As INamespaceSymbol
+            Return New MissingNamespaceSymbol(
+                       container.EnsureVbSymbolOrNothing(Of NamespaceSymbol)(NameOf(container)),
+                       name)
         End Function
 
         Protected Overrides Function CommonCreateArrayTypeSymbol(elementType As ITypeSymbol, rank As Integer) As IArrayTypeSymbol
             Return CreateArrayTypeSymbol(elementType.EnsureVbSymbolOrNothing(Of TypeSymbol)(NameOf(elementType)), rank)
         End Function
 
-        Protected Overrides Function CommonCreateTupleTypeSymbol(elementTypes As ImmutableArray(Of ITypeSymbol), elementNames As ImmutableArray(Of String)) As INamedTypeSymbol
-            If elementTypes.IsDefault Then
-                Throw New ArgumentNullException(NameOf(elementTypes))
-            End If
-
-            If elementTypes.Length <= 1 Then
-                Throw New ArgumentException(CodeAnalysisResources.TuplesNeedAtLeastTwoElements, NameOf(elementNames))
-            End If
-
-            elementNames = CheckTupleElementNames(elementTypes.Length, elementNames)
-
+        Protected Overrides Function CommonCreateTupleTypeSymbol(elementTypes As ImmutableArray(Of ITypeSymbol),
+                                                                 elementNames As ImmutableArray(Of String),
+                                                                 elementLocations As ImmutableArray(Of Location)) As INamedTypeSymbol
             Dim typesBuilder = ArrayBuilder(Of TypeSymbol).GetInstance(elementTypes.Length)
             For i As Integer = 0 To elementTypes.Length - 1
-                If elementTypes(i) Is Nothing Then
-                    Throw New ArgumentNullException($"{NameOf(elementTypes)}[{i}]")
-                End If
-
                 typesBuilder.Add(elementTypes(i).EnsureVbSymbolOrNothing(Of TypeSymbol)($"{NameOf(elementTypes)}[{i}]"))
             Next
 
             'no location for the type declaration
-            Return TupleTypeSymbol.Create(locationOpt:=Nothing, elementTypes:=typesBuilder.ToImmutableAndFree(), elementLocations:=Nothing, elementNames:=elementNames, compilation:=Me)
+            Return TupleTypeSymbol.Create(locationOpt:=Nothing,
+                                          elementTypes:=typesBuilder.ToImmutableAndFree(),
+                                          elementLocations:=elementLocations,
+                                          elementNames:=elementNames, compilation:=Me,
+                                          shouldCheckConstraints:=False)
         End Function
 
-        ''' <summary>
-        ''' Check that if any names are provided, their number matches the expected cardinality and they are not null.
-        ''' </summary>
-        Private Shared Function CheckTupleElementNames(cardinality As Integer, elementNames As ImmutableArray(Of String)) As ImmutableArray(Of String)
-            If Not elementNames.IsDefault Then
-                If elementNames.Length <> cardinality Then
-                    Throw New ArgumentException(CodeAnalysisResources.TupleElementNameCountMismatch, NameOf(elementNames))
-                End If
-
-                If elementNames.All(Function(n As String) n Is Nothing) Then
-                    Return Nothing
-                End If
-            End If
-
-            Return elementNames
-        End Function
-
-        Protected Overrides Function CommonCreateTupleTypeSymbol(underlyingType As INamedTypeSymbol, elementNames As ImmutableArray(Of String)) As INamedTypeSymbol
-            If underlyingType Is Nothing Then
-                Throw New ArgumentNullException(NameOf(underlyingType))
-            End If
-
+        Protected Overrides Function CommonCreateTupleTypeSymbol(
+                underlyingType As INamedTypeSymbol,
+                elementNames As ImmutableArray(Of String),
+                elementLocations As ImmutableArray(Of Location)) As INamedTypeSymbol
             Dim csharpUnderlyingTuple = underlyingType.EnsureVbSymbolOrNothing(Of NamedTypeSymbol)(NameOf(underlyingType))
 
             Dim cardinality As Integer
@@ -2631,11 +2610,12 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
             End If
 
             elementNames = CheckTupleElementNames(cardinality, elementNames)
+            CheckTupleElementLocations(cardinality, elementLocations)
 
             Return TupleTypeSymbol.Create(
                 locationOpt:=Nothing,
                 tupleCompatibleType:=underlyingType.EnsureVbSymbolOrNothing(Of NamedTypeSymbol)(NameOf(underlyingType)),
-                elementLocations:=Nothing,
+                elementLocations:=elementLocations,
                 elementNames:=elementNames)
         End Function
 
@@ -2645,7 +2625,9 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
 
         Protected Overrides Function CommonCreateAnonymousTypeSymbol(
                 memberTypes As ImmutableArray(Of ITypeSymbol),
-                memberNames As ImmutableArray(Of String)) As INamedTypeSymbol
+                memberNames As ImmutableArray(Of String),
+                memberLocations As ImmutableArray(Of Location),
+                memberIsReadOnly As ImmutableArray(Of Boolean)) As INamedTypeSymbol
 
             Dim i = 0
             For Each t In memberTypes
@@ -2654,11 +2636,18 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
                 i = i + 1
             Next
 
-            Dim fields = memberTypes.ZipAsArray(
-                memberNames,
-                Function(type, name) New AnonymousTypeField(name, DirectCast(type, TypeSymbol), Location.None))
+            Dim fields = ArrayBuilder(Of AnonymousTypeField).GetInstance()
 
-            Dim descriptor = New AnonymousTypeDescriptor(fields, Location.None, isImplicitlyDeclared:=False)
+            For i = 0 To memberTypes.Length - 1
+                Dim type = memberTypes(i)
+                Dim name = memberNames(i)
+                Dim loc = If(memberLocations.IsDefault, Location.None, memberLocations(i))
+                Dim isReadOnly = memberIsReadOnly.IsDefault OrElse memberIsReadOnly(i)
+                fields.Add(New AnonymousTypeField(name, DirectCast(type, TypeSymbol), loc, isReadOnly))
+            Next
+
+            Dim descriptor = New AnonymousTypeDescriptor(
+                fields.ToImmutableAndFree(), Location.None, isImplicitlyDeclared:=False)
             Return Me.AnonymousTypeManager.ConstructAnonymousTypeSymbol(descriptor)
         End Function
 
@@ -2719,6 +2708,18 @@ Namespace Microsoft.CodeAnalysis.VisualBasic
 
             Return If(IOperationFeatureFlag Is Nothing, False, options.Features.ContainsKey(IOperationFeatureFlag))
         End Function
+
+        Friend Overrides Function IsUnreferencedAssemblyIdentityDiagnosticCode(code As Integer) As Boolean
+            Select Case code
+                Case ERRID.ERR_UnreferencedAssemblyEvent3,
+                     ERRID.ERR_UnreferencedAssembly3
+                    Return True
+
+                Case Else
+                    Return False
+            End Select
+        End Function
+
 #End Region
 
         Private Class SymbolSearcher

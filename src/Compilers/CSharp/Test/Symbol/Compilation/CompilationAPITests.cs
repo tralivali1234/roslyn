@@ -17,6 +17,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp.Test.Utilities;
 using Microsoft.CodeAnalysis.Emit;
 using Microsoft.CodeAnalysis.Test.Utilities;
+using Microsoft.CodeAnalysis.Text;
 using Roslyn.Test.Utilities;
 using Roslyn.Utilities;
 using Xunit;
@@ -43,29 +44,68 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests
         }
 
         [Fact]
+        [WorkItem(233669, "https://devdiv.visualstudio.com/DevDiv/_workitems?id=233669")]
         public void CompilationName()
         {
             // report an error, rather then silently ignoring the directory
             // (see cli partition II 22.30) 
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"C:/foo/Test.exe"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"C:\foo\Test.exe"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"\foo/Test.exe"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"C:Test.exe"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"Te\0st.exe"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"   \t  "));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"\uD800"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@""));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@" a"));
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create(@"\u2000a")); // U+20700 is whitespace
-            Assert.Throws<ArgumentException>(() => CSharpCompilation.Create("..\\..\\RelativePath"));
+            CSharpCompilation.Create(@"C:/foo/Test.exe").VerifyEmitDiagnostics(
+                // warning CS8021: No value for RuntimeMetadataVersion found. No assembly containing System.Object was found nor was a value for RuntimeMetadataVersion specified through options.
+                Diagnostic(ErrorCode.WRN_NoRuntimeMetadataVersion).WithLocation(1, 1),
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1),
+                // error CS5001: Program does not contain a static 'Main' method suitable for an entry point
+                Diagnostic(ErrorCode.ERR_NoEntryPoint).WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"C:\foo\Test.exe").GetDeclarationDiagnostics().Verify(
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
+            var compilationOptions = TestOptions.DebugDll.WithWarningLevel(0);
+            CSharpCompilation.Create(@"\foo/Test.exe", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"C:Test.exe", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"Te\0st.exe", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"   \t  ", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name cannot start with whitespace.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name cannot start with whitespace.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"\uD800", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name cannot be empty.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name cannot be empty.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@" a", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name cannot start with whitespace.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name cannot start with whitespace.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create(@"\u2000a", options: compilationOptions).VerifyEmitDiagnostics( // U+20700 is whitespace
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
+            CSharpCompilation.Create("..\\..\\RelativePath", options: compilationOptions).VerifyEmitDiagnostics(
+                // error CS8203: Invalid assembly name: Name contains invalid characters.
+                Diagnostic(ErrorCode.ERR_BadAssemblyName).WithArguments("Name contains invalid characters.").WithLocation(1, 1)
+                );
 
             // other characters than directory and volume separators are ok:
-            CSharpCompilation.Create(@";,*?<>#!@&");
-            CSharpCompilation.Create("foo");
-            CSharpCompilation.Create(".foo");
-            CSharpCompilation.Create("foo "); // can end with whitespace
-            CSharpCompilation.Create("....");
-            CSharpCompilation.Create(null);
+            CSharpCompilation.Create(@";,*?<>#!@&", options: compilationOptions).VerifyEmitDiagnostics();
+            CSharpCompilation.Create("foo", options: compilationOptions).VerifyEmitDiagnostics();
+            CSharpCompilation.Create(".foo", options: compilationOptions).VerifyEmitDiagnostics();
+            CSharpCompilation.Create("foo ", options: compilationOptions).VerifyEmitDiagnostics(); // can end with whitespace
+            CSharpCompilation.Create("....", options: compilationOptions).VerifyEmitDiagnostics();
+            CSharpCompilation.Create(null, options: compilationOptions).VerifyEmitDiagnostics();
         }
 
         [Fact]
@@ -240,13 +280,13 @@ namespace A.B {
 
             result.Diagnostics.Verify(
                 // error CS2042: Invalid debug information format: -1
-                Diagnostic(ErrorCode.ERR_InvalidDebugInformationFormat).WithArguments("-1"),
+                Diagnostic(ErrorCode.ERR_InvalidDebugInformationFormat).WithArguments("-1").WithLocation(1, 1),
                 // error CS2041: Invalid output name: Name cannot start with whitespace.
-                Diagnostic(ErrorCode.ERR_InvalidOutputName).WithArguments(CodeAnalysisResources.NameCannotStartWithWhitespace),
+                Diagnostic(ErrorCode.ERR_InvalidOutputName).WithArguments(CodeAnalysisResources.NameCannotStartWithWhitespace).WithLocation(1, 1),
                 // error CS2024: Invalid file section alignment '513'
-                Diagnostic(ErrorCode.ERR_InvalidFileAlignment).WithArguments("513"),
+                Diagnostic(ErrorCode.ERR_InvalidFileAlignment).WithArguments("513").WithLocation(1, 1),
                 // error CS1773: Invalid version 1000000.-1000000 for /subsystemversion. The version must be 6.02 or greater for ARM or AppContainerExe, and 4.00 or greater otherwise
-                Diagnostic(ErrorCode.ERR_InvalidSubsystemVersion).WithArguments("1000000.-1000000"));
+                Diagnostic(ErrorCode.ERR_InvalidSubsystemVersion).WithArguments("1000000.-1000000").WithLocation(1, 1));
 
             Assert.False(result.Success);
         }
@@ -496,15 +536,15 @@ namespace A.B {
                 // (1,19): error CS1002: ; expected
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_SemicolonExpected, "(").WithLocation(1, 19),
-                // (1,19): error CS8124: Tuple must contain at least two elements.
-                // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
-                Diagnostic(ErrorCode.ERR_TupleTooFewElements, "(*#$@^%*&); class D : Alias(*#$@^%*&).C {}").WithLocation(1, 19),
                 // (1,20): error CS1031: Type expected
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_TypeExpected, "*").WithLocation(1, 20),
                 // (1,21): error CS1040: Preprocessor directives must appear as the first non-whitespace character on a line
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_BadDirectivePlacement, "#").WithLocation(1, 21),
+                // (1,61): error CS8124: Tuple must contain at least two elements.
+                // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
+                Diagnostic(ErrorCode.ERR_TupleTooFewElements, "").WithLocation(1, 61),
                 // (1,61): error CS1026: ) expected
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_CloseParenExpected, "").WithLocation(1, 61),
@@ -564,9 +604,6 @@ namespace A.B {
                 // (1,19): error CS1002: ; expected
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_SemicolonExpected, "(").WithLocation(1, 19),
-                // (1,19): error CS8124: Tuple must contain at least two elements.
-                // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
-                Diagnostic(ErrorCode.ERR_TupleTooFewElements, "(*#$@^%*&); class D : Alias(*#$@^%*&).C {}").WithLocation(1, 19),
                 // (1,19): error CS8059: Feature 'tuples' is not available in C# 6.  Please use language version 7 or greater.
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_FeatureNotAvailableInVersion6, "(*#$@^%*&); class D : Alias(*#$@^%*&).C {}").WithArguments("tuples", "7").WithLocation(1, 19),
@@ -576,6 +613,9 @@ namespace A.B {
                 // (1,21): error CS1040: Preprocessor directives must appear as the first non-whitespace character on a line
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_BadDirectivePlacement, "#").WithLocation(1, 21),
+                // (1,61): error CS8124: Tuple must contain at least two elements.
+                // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
+                Diagnostic(ErrorCode.ERR_TupleTooFewElements, "").WithLocation(1, 61),
                 // (1,61): error CS1026: ) expected
                 // extern alias Alias(*#$@^%*&); class D : Alias(*#$@^%*&).C {}
                 Diagnostic(ErrorCode.ERR_CloseParenExpected, "").WithLocation(1, 61),
@@ -1519,7 +1559,7 @@ class A
 ";
             // equivalent of csc with no /moduleassemblyname specified:
             var compilation = CSharpCompilation.Create(assemblyName: null, options: TestOptions.ReleaseModule, syntaxTrees: new[] { Parse(source) }, references: new[] { MscorlibRef });
-            compilation.VerifyDiagnostics();
+            compilation.VerifyEmitDiagnostics();
 
             Assert.Null(compilation.AssemblyName);
             Assert.Equal("?", compilation.Assembly.Name);
@@ -1527,7 +1567,7 @@ class A
 
             // no name is allowed for assembly as well, although it isn't useful:
             compilation = CSharpCompilation.Create(assemblyName: null, options: TestOptions.ReleaseDll, syntaxTrees: new[] { Parse(source) }, references: new[] { MscorlibRef });
-            compilation.VerifyDiagnostics();
+            compilation.VerifyEmitDiagnostics();
 
             Assert.Null(compilation.AssemblyName);
             Assert.Equal("?", compilation.Assembly.Name);
@@ -2219,6 +2259,54 @@ public class C { public static FrameworkName Foo() { return null; }}";
         }
 
         [Fact()]
+        public void CreateAnonymousType_IncorrectLengths_IsReadOnly()
+        {
+            var compilation = CSharpCompilation.Create("HelloWorld");
+            Assert.Throws<ArgumentException>(() =>
+                compilation.CreateAnonymousTypeSymbol(
+                    ImmutableArray.Create((ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32),
+                                          (ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32)),
+                    ImmutableArray.Create("m1", "m2"),
+                    ImmutableArray.Create(true)));
+        }
+
+        [Fact()]
+        public void CreateAnonymousType_IncorrectLengths_Locations()
+        {
+            var compilation = CSharpCompilation.Create("HelloWorld");
+            Assert.Throws<ArgumentException>(() =>
+                compilation.CreateAnonymousTypeSymbol(
+                    ImmutableArray.Create((ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32),
+                                          (ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32)),
+                    ImmutableArray.Create("m1", "m2"),
+                    memberLocations: ImmutableArray.Create(Location.None)));
+        }
+
+        [Fact()]
+        public void CreateAnonymousType_WritableProperty()
+        {
+            var compilation = CSharpCompilation.Create("HelloWorld");
+            Assert.Throws<ArgumentException>(() =>
+                compilation.CreateAnonymousTypeSymbol(
+                    ImmutableArray.Create((ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32),
+                                          (ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32)),
+                    ImmutableArray.Create("m1", "m2"),
+                    ImmutableArray.Create(false, false)));
+        }
+
+        [Fact()]
+        public void CreateAnonymousType_NullLocations()
+        {
+            var compilation = CSharpCompilation.Create("HelloWorld");
+            Assert.Throws<ArgumentNullException>(() =>
+                compilation.CreateAnonymousTypeSymbol(
+                    ImmutableArray.Create((ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32),
+                                          (ITypeSymbol)compilation.GetSpecialType(SpecialType.System_Int32)),
+                    ImmutableArray.Create("m1", "m2"),
+                    memberLocations: ImmutableArray.Create(Location.None, null)));
+        }
+
+        [Fact()]
         public void CreateAnonymousType_NullArgument1()
         {
             var compilation = CSharpCompilation.Create("HelloWorld");
@@ -2269,6 +2357,29 @@ public class C { public static FrameworkName Foo() { return null; }}";
             Assert.True(type.IsAnonymousType);
             Assert.Equal(1, type.GetMembers().OfType<IPropertySymbol>().Count());
             Assert.Equal("<anonymous type: int m1>", type.ToDisplayString());
+            Assert.All(type.GetMembers().OfType<IPropertySymbol>().Select(p => p.Locations.FirstOrDefault()), 
+                loc => Assert.Equal(loc, Location.None));
+        }
+
+        [Fact()]
+        public void CreateAnonymousType_Locations()
+        {
+            var compilation = CSharpCompilation.Create("HelloWorld");
+            var tree = CSharpSyntaxTree.ParseText("class C { }");
+            var loc1 = Location.Create(tree, new TextSpan(0, 1));
+            var loc2 = Location.Create(tree, new TextSpan(1, 1));
+
+            var type = compilation.CreateAnonymousTypeSymbol(
+                        ImmutableArray.Create<ITypeSymbol>(compilation.GetSpecialType(SpecialType.System_Int32),
+                                                           compilation.GetSpecialType(SpecialType.System_Int32)),
+                        ImmutableArray.Create("m1", "m2"),
+                        memberLocations: ImmutableArray.Create(loc1, loc2));
+
+            Assert.True(type.IsAnonymousType);
+            Assert.Equal(2, type.GetMembers().OfType<IPropertySymbol>().Count());
+            Assert.Equal(loc1, type.GetMembers("m1").Single().Locations.Single());
+            Assert.Equal(loc2, type.GetMembers("m2").Single().Locations.Single());
+            Assert.Equal("<anonymous type: int m1, int m2>", type.ToDisplayString());
         }
 
         [Fact()]
@@ -2282,6 +2393,8 @@ public class C { public static FrameworkName Foo() { return null; }}";
             Assert.True(type.IsAnonymousType);
             Assert.Equal(2, type.GetMembers().OfType<IPropertySymbol>().Count());
             Assert.Equal("<anonymous type: int m1, bool m2>", type.ToDisplayString());
+            Assert.All(type.GetMembers().OfType<IPropertySymbol>().Select(p => p.Locations.FirstOrDefault()),
+                loc => Assert.Equal(loc, Location.None));
         }
 
         #region Script return values

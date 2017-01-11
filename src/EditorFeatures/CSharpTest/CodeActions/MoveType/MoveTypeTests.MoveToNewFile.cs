@@ -43,7 +43,7 @@ namespace Microsoft.CodeAnalysis.Editor.CSharp.UnitTests.CodeActions.MoveType
         {
             var code =
 @"[|clas|]s Class1 { }
-class Class2 { }";
+ class Class2 { }";
             var codeAfterMove = @"class Class2 { }";
 
             var expectedDocumentName = "Class1.cs";
@@ -130,6 +130,7 @@ class Class2 { }";
 
             var codeAfterMove =
 @"// Banner Text
+using System;
 
 class Class2 { }";
 
@@ -332,6 +333,43 @@ class Class2 { }";
         }
 
         [WpfFact, Trait(Traits.Feature, Traits.Features.CodeActionsMoveType)]
+        public async Task MoveNestedTypePreserveModifiers()
+        {
+            var code =
+@"namespace N1
+{
+    abstract class Class1 
+    {
+        [||]class Class2 { }
+    }
+    
+}";
+
+            var codeAfterMove =
+@"namespace N1
+{
+    abstract partial class Class1
+    {
+
+    }
+}";
+
+            var expectedDocumentName = "Class2.cs";
+
+            var destinationDocumentText =
+@"namespace N1
+{
+    abstract partial class Class1 
+    {
+        class Class2
+        {
+        }
+    }
+}";
+            await TestMoveTypeToNewFileAsync(code, codeAfterMove, expectedDocumentName, destinationDocumentText);
+        }
+
+        [WpfFact, Trait(Traits.Feature, Traits.Features.CodeActionsMoveType)]
         [WorkItem(14004, "https://github.com/dotnet/roslyn/issues/14004")]
         public async Task MoveNestedTypeToNewFile_Attributes1()
         {
@@ -371,6 +409,50 @@ class Class2 { }";
     }
 }";
             await TestMoveTypeToNewFileAsync(code, codeAfterMove, expectedDocumentName, destinationDocumentText);
+        }
+
+        [WpfFact, Trait(Traits.Feature, Traits.Features.CodeActionsMoveType)]
+        [WorkItem(14484, "https://github.com/dotnet/roslyn/issues/14484")]
+        public async Task MoveNestedTypeToNewFile_Comments1()
+        {
+            var code =
+@"namespace N1
+{
+    /// Outer doc comment.
+    class Class1
+    {
+        /// Inner doc comment
+        [||]class Class2
+        {
+        }
+    }
+}";
+
+            var codeAfterMove =
+@"namespace N1
+{
+    /// Outer doc comment.
+    partial class Class1
+    {
+    }
+}";
+
+            var expectedDocumentName = "Class2.cs";
+
+            var destinationDocumentText =
+@"namespace N1
+{
+    partial class Class1
+    {
+        /// Inner doc comment
+        class Class2
+        {
+        }
+    }
+}";
+            await TestMoveTypeToNewFileAsync(
+                code, codeAfterMove, expectedDocumentName, destinationDocumentText,
+                compareTokens: false);
         }
 
         [WpfFact, Trait(Traits.Feature, Traits.Features.CodeActionsMoveType)]
@@ -663,6 +745,82 @@ namespace OuterN1.N1
     }
 }";
             await TestMoveTypeToNewFileAsync(code, codeAfterMove, expectedDocumentName, destinationDocumentText);
+        }
+
+        [WpfFact, Trait(Traits.Feature, Traits.Features.CodeActionsMoveType)]
+        public async Task MoveTypeUsings1()
+        {
+            var code =
+@"
+// Only used by inner type.
+using System;
+
+// Unused by both types.
+using System.Collections;
+
+class Outer { 
+    [||]class Inner {
+        DateTime d;
+    }
+}";
+            var codeAfterMove = @"
+// Unused by both types.
+using System.Collections;
+
+partial class Outer {
+}";
+
+            var expectedDocumentName = "Inner.cs";
+            var destinationDocumentText =
+@"
+// Only used by inner type.
+using System;
+
+partial class Outer {
+    class Inner { 
+        DateTime d;
+    }
+}";
+
+            await TestMoveTypeToNewFileAsync(code, codeAfterMove, expectedDocumentName, destinationDocumentText);
+        }
+
+        [WorkItem(16283, "https://github.com/dotnet/roslyn/issues/16283")]
+        [WpfFact, Trait(Traits.Feature, Traits.Features.CodeActionsMoveType)]
+        public async Task TestLeadingTrivia1()
+        {
+            var code =
+@"
+class Outer
+{
+    class Inner1
+    {
+    }
+
+    [|class|] Inner2
+    {
+    }
+}";
+            var codeAfterMove = @"
+partial class Outer
+{
+    class Inner1
+    {
+    }
+}";
+
+            var expectedDocumentName = "Inner2.cs";
+            var destinationDocumentText = @"
+partial class Outer
+{
+    class Inner2
+    {
+    }
+}";
+
+            await TestMoveTypeToNewFileAsync(
+                code, codeAfterMove, expectedDocumentName, destinationDocumentText,
+                compareTokens: false);
         }
     }
 }
