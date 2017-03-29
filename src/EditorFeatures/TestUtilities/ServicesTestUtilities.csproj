@@ -52,10 +52,6 @@
       <Project>{76c6f005-c89d-4348-bb4a-391898dbeb52}</Project>
       <Name>TestUtilities.Desktop</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\Test\Utilities\Portable.FX45\TestUtilities.FX45.csproj">
-      <Project>{f7712928-1175-47b3-8819-ee086753dee2}</Project>
-      <Name>TestUtilities.FX45</Name>
-    </ProjectReference>
     <ProjectReference Include="..\..\Test\Utilities\Portable\TestUtilities.csproj">
       <Project>{ccbd3438-3e84-40a9-83ad-533f23bcfca5}</Project>
       <Name>TestUtilities</Name>
@@ -135,6 +131,7 @@
     <Compile Include="BlindAggregatorFactory.cs" />
     <Compile Include="BlockCommentEditing\AbstractBlockCommentEditingTests.cs" />
     <Compile Include="BraceHighlighting\AbstractBraceHighlightingTests.cs" />
+    <Compile Include="BraceHighlighting\MultiCharacterBraceHighlightingTests.cs" />
     <Compile Include="BraceMatching\AbstractBraceMatcherTests.cs" />
     <Compile Include="CallHierarchy\CallHierarchyTestState.cs" />
     <Compile Include="ChangeSignature\AbstractChangeSignatureTests.cs" />
@@ -185,6 +182,7 @@
     <Compile Include="ExtractInterface\ExtractInterfaceTestState.cs" />
     <Compile Include="ExtractInterface\TestExtractInterfaceOptions.cs" />
     <Compile Include="GoToAdjacentMember\AbstractGoToAdjacentMemberTests.cs" />
+    <Compile Include="InProcRemoteHostClientFactory.cs" />
     <Compile Include="KeywordHighlighting\AbstractKeywordHighlighterTests.cs" />
     <Compile Include="MinimalTestExportProvider.cs" />
     <Compile Include="MoveType\AbstractMoveTypeTest.cs" />

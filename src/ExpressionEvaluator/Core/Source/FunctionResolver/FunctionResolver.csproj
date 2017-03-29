@@ -36,6 +36,9 @@
     <Compile Include="..\..\..\..\Compilers\CSharp\Portable\Syntax\SyntaxKindFacts.cs">
       <Link>CSharp\Compiler\SyntaxKindFacts.cs</Link>
     </Compile>
+    <Compile Include="..\ExpressionCompiler\MetadataUtilities_Exceptions.cs">
+      <Link>ExpressionCompiler\MetadataUtilities_Exceptions.cs</Link>
+    </Compile>
     <Compile Include="CSharp\CSharpFunctionResolver.cs" />
     <Compile Include="CSharp\GreenNode.cs" />
     <Compile Include="CSharp\MemberSignatureParser.cs" />
@@ -72,6 +75,6 @@
   <ItemGroup>
     <None Include="project.json" />
   </ItemGroup>
-  <Import Project="..\..\..\..\Tools\Vsdconfig\Vsdconfig.targets" />
+  <Import Project="..\..\..\..\..\build\Targets\Vsdconfig.targets" />
   <Import Project="..\..\..\..\..\build\Targets\Imports.targets" />
 </Project>

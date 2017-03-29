@@ -2,6 +2,7 @@
 
 using System;
 using System.Globalization;
+using System.IO;
 using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis
@@ -158,6 +159,10 @@ namespace Microsoft.CodeAnalysis
         public abstract int ERR_CantReadRulesetFile { get; }
         public abstract int ERR_CompileCancelled { get; }
 
+        // parse options:
+        public abstract int ERR_BadSourceCodeKind { get; }
+        public abstract int ERR_BadDocumentationMode { get; }
+
         // compilation options:
         public abstract int ERR_BadCompilationOptionValue { get; }
         public abstract int ERR_MutuallyExclusiveOptions { get; }
@@ -215,6 +220,18 @@ namespace Microsoft.CodeAnalysis
         public abstract int ERR_PeWritingFailure { get; }
         public abstract int ERR_ModuleEmitFailure { get; }
         public abstract int ERR_EncUpdateFailedMissingAttribute { get; }
+
+        /// <summary>
+        /// Takes an exception produced while writing to a file stream and produces a diagnostic.
+        /// </summary>
+        public void ReportStreamWriteException(Exception e, string filePath, TextWriter consoleOutput)
+        {
+            if (consoleOutput != null)
+            {
+                var diagnostic = new DiagnosticInfo(this, ERR_OutputWriteFailed, filePath, e.Message);
+                consoleOutput.WriteLine(diagnostic.ToString(consoleOutput.FormatProvider));
+            }
+        }
 
         public abstract void ReportInvalidAttributeArgument(DiagnosticBag diagnostics, SyntaxNode attributeSyntax, int parameterIndex, AttributeData attribute);
         public abstract void ReportInvalidNamedArgument(DiagnosticBag diagnostics, SyntaxNode attributeSyntax, int namedArgumentIndex, ITypeSymbol attributeClass, string parameterName);

@@ -2,7 +2,7 @@
 <!-- Copyright (c)  Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information. -->
 <Project ToolsVersion="14.0" DefaultTargets="BuildAndTest" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
-  <Import Project="$(MSBuildThisFileDirectory)build\Targets\Dependencies.props" />
+  <Import Project="$(MSBuildThisFileDirectory)build\Targets\Versions.props" />
 
   <!-- At the moment Jenkins runs on a machine without any build of Visual Studio 2015.  Hence we must
        use a 2013 compatible solution. -->
@@ -18,19 +18,12 @@
     <IncludePattern Condition="'$(IncludePattern)' == '' AND '$(TestVsi)' != 'true'">*.UnitTests.dll</IncludePattern>
     <IncludePattern Condition="'$(IncludePattern)' == '' AND '$(TestVsi)' == 'true'">*.IntegrationTests.dll</IncludePattern>
     <OutputDirectory>Binaries\$(Configuration)</OutputDirectory>
-    <NuGetPackageRoot>$(UserProfile)\.nuget\packages</NuGetPackageRoot>
+    <RunTestArgs>$(RunTestArgs) -log:&quot;$(OutputDirectory)\runtests.log&quot;</RunTestArgs>
     <CoreClrTestDirectory>$(OutputDirectory)\CoreClrTest</CoreClrTestDirectory>
     <MSBuildCommonProperties>
       RestorePackages=false;
       TreatWarningsAsErrors=true;
-    </MSBuildCommonProperties>
-    <MSBuildCommonProperties Condition="'$(TestVsi)' != 'true'">
-      $(MSBuildCommonProperties);
       DeployExtension=false;
-    </MSBuildCommonProperties>
-    <MSBuildCommonProperties Condition="'$(TestVsi)' == 'true'">
-      $(MSBuildCommonProperties);
-      DeployExtension=true;
     </MSBuildCommonProperties>
   </PropertyGroup>
 
@@ -102,9 +95,20 @@
       <CoreRunArgs>$(CoreClrTestDirectory)\xunit.console.netcore.exe @(CoreTestAssemblies, ' ') -parallel all -xml $(CoreClrTestDirectory)\xUnitResults\TestResults.xml</CoreRunArgs>
       <RunTestsExe>Binaries\$(Configuration)\Exes\RunTests\RunTests.exe</RunTestsExe>
       <RunTestsArgs>$(NuGetPackageRoot)\xunit.runner.console\$(xunitrunnerconsoleVersion)\tools $(RunTestArgs) @(TestAssemblies, ' ')</RunTestsArgs>
+      <VsixExpInstallerExe>$(NuGetPackageRoot)\roslyntools.microsoft.vsixexpinstaller\$(RoslynToolsMicrosoftVSIXExpInstallerVersion)\tools\VsixExpInstaller.exe</VsixExpInstallerExe>
+      <VsixExpInstallerArgs>/rootSuffix:RoslynDev /vsInstallDir:"$([System.IO.Path]::GetFullPath('$(MSBuildBinPath)\..\..\..'))"</VsixExpInstallerArgs>
     </PropertyGroup>
 
-    <Exec Condition="'$(TestVsi)' != 'true'" Command="&quot;$(CoreRunExe)&quot; $(CoreRunArgs)" />
+    <Exec Condition="'$(TestVsi)' != 'true' AND '$(SkipCoreClr)' != 'true'" Command="&quot;$(CoreRunExe)&quot; $(CoreRunArgs)" />
+
+    <!-- Manually deploy any VSIX required by our integration tests (https://github.com/dotnet/roslyn/issues/17456) -->
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\CompilerExtension\Roslyn.Compilers.Extension.vsix" />
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\VisualStudioSetup\Roslyn.VisualStudio.Setup.vsix" />
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\VisualStudioSetup.Next\Roslyn.VisualStudio.Setup.Next.vsix" />
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\VisualStudioInteractiveComponents\Roslyn.VisualStudio.InteractiveComponents.vsix" />
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\ExpressionEvaluatorPackage\ExpressionEvaluatorPackage.vsix" />
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\VisualStudioDiagnosticsWindow\Roslyn.VisualStudio.DiagnosticsWindow.vsix" />
+    <Exec Condition="'$(TestVsi)' == 'true'" Command="&quot;$(VsixExpInstallerExe)&quot; $(VsixExpInstallerArgs) $(OutputDirectory)\Vsix\VisualStudioIntegrationTestSetup\Microsoft.VisualStudio.IntegrationTest.Setup.vsix" />
 
     <Exec Command="&quot;$(RunTestsExe)&quot; $(RunTestsArgs)" />
 
