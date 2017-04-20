@@ -31,9 +31,13 @@ namespace Microsoft.VisualStudio.IntegrationTest.Utilities
 
         public ErrorList_OutOfProc ErrorList { get; }
 
+        public ExtractInterfaceDialog_OutOfProc ExtractInterfaceDialog { get; }
+
         public FindReferencesWindow_OutOfProc FindReferencesWindow { get; }
 
         public GenerateTypeDialog_OutOfProc GenerateTypeDialog { get; }
+
+        public InlineRenameDialog_OutOfProc InlineRenameDialog { get; set; }
 
         public PreviewChangesDialog_OutOfProc PreviewChangesDialog { get; }
 
@@ -90,8 +94,10 @@ namespace Microsoft.VisualStudio.IntegrationTest.Utilities
             Editor = new Editor_OutOfProc(this);
             EncapsulateField = new EncapsulateField_OutOfProc(this);
             ErrorList = new ErrorList_OutOfProc(this);
+            ExtractInterfaceDialog = new ExtractInterfaceDialog_OutOfProc(this);
             FindReferencesWindow = new FindReferencesWindow_OutOfProc(this);
             GenerateTypeDialog = new GenerateTypeDialog_OutOfProc(this);
+            InlineRenameDialog = new InlineRenameDialog_OutOfProc(this);
             PreviewChangesDialog = new PreviewChangesDialog_OutOfProc(this);
             Shell = new Shell_OutOfProc(this);
             SolutionExplorer = new SolutionExplorer_OutOfProc(this);
@@ -228,7 +234,8 @@ namespace Microsoft.VisualStudio.IntegrationTest.Utilities
         {
             var result = default(T);
 
-            RetryRpcCall(() => {
+            RetryRpcCall(() =>
+            {
                 result = action();
             });
 
