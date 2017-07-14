@@ -44,6 +44,14 @@ namespace Microsoft.CodeAnalysis.Diagnostics
 
         public const string UseExplicitTupleNameDiagnosticId = "IDE0033";
 
+        public const string UseDefaultLiteralDiagnosticId = "IDE0034";
+
+        public const string RemoveUnreachableCodeDiagnosticId = "IDE0035";
+
+        public const string OrderModifiers = "IDE0036";
+
+        public const string UseInferredMemberNameDiagnosticId = "IDE0037";
+
         // Analyzer error Ids
         public const string AnalyzerChangedId = "IDE1001";
         public const string AnalyzerDependencyConflictId = "IDE1002";
