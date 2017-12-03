@@ -1023,6 +1023,8 @@ namespace Microsoft.CodeAnalysis.Editing
         /// </summary>
         public abstract SyntaxNode WithAccessibility(SyntaxNode declaration, Accessibility accessibility);
 
+        internal abstract bool CanHaveAccessibility(SyntaxNode declaration);
+
         /// <summary>
         /// Gets the <see cref="DeclarationModifiers"/> for the declaration.
         /// </summary>
@@ -1394,6 +1396,9 @@ namespace Microsoft.CodeAnalysis.Editing
         /// Creates a statement that declares a single local variable.
         /// </summary>
         public abstract SyntaxNode LocalDeclarationStatement(SyntaxNode type, string identifier, SyntaxNode initializer = null, bool isConst = false);
+
+        internal abstract SyntaxNode WithInitializer(SyntaxNode variableDeclarator, SyntaxNode initializer);
+        internal abstract SyntaxNode EqualsValueClause(SyntaxToken operatorToken, SyntaxNode value);
 
         /// <summary>
         /// Creates a statement that declares a single local variable.

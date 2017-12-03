@@ -1177,7 +1177,7 @@ using System.Collections.Generic;
  
 class C
 {
-    static IEnumerable<dynamic> Foo()
+    static IEnumerable<dynamic> Goo()
     {
         yield break;
     }
@@ -1186,7 +1186,7 @@ class C
             CompileAndVerify(source, additionalRefs: new[] { CSharpRef, SystemCoreRef }, options: TestOptions.ReleaseDll.WithMetadataImportOptions(MetadataImportOptions.All), symbolValidator: module =>
             {
                 var c = module.GlobalNamespace.GetMember<NamedTypeSymbol>("C");
-                var iterator = c.GetMember<NamedTypeSymbol>("<Foo>d__0");
+                var iterator = c.GetMember<NamedTypeSymbol>("<Goo>d__0");
                 var getEnumerator = iterator.GetMethod("System.Collections.Generic.IEnumerable<dynamic>.GetEnumerator");
                 var attrs = getEnumerator.GetAttributes();
 
@@ -1290,7 +1290,7 @@ class C
             comp = CreateCompilation(source1, references: new[] { ref0, SystemCoreRef });
             comp.VerifyDiagnostics();
             // Make sure we emit without errors when System.Boolean is missing.
-            CompileAndVerify(comp, verify: false);
+            CompileAndVerify(comp, verify: Verification.Fails);
         }
 
         [Fact]
@@ -1324,7 +1324,7 @@ class C
             comp = CreateCompilation(source1, references: new[] { ref0, SystemCoreRef });
             comp.VerifyDiagnostics();
             // Make sure we emit without errors when System.Boolean is missing.
-            CompileAndVerify(comp, verify: false);
+            CompileAndVerify(comp, verify: Verification.Fails);
         }
 
         [Fact]

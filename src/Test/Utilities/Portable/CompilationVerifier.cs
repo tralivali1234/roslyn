@@ -66,16 +66,20 @@ namespace Microsoft.CodeAnalysis.Test.Utilities
             return modules;
         }
 
-        public void Emit(string expectedOutput, int? expectedReturnCode, string[] args, IEnumerable<ResourceDescription> manifestResources, EmitOptions emitOptions, bool peVerify, SignatureDescription[] expectedSignatures)
+        public void Emit(string expectedOutput, int? expectedReturnCode, string[] args, IEnumerable<ResourceDescription> manifestResources, EmitOptions emitOptions, Verification peVerify, SignatureDescription[] expectedSignatures)
         {
             using (var testEnvironment = RuntimeEnvironmentFactory.Create(_dependencies))
             {
                 string mainModuleName = Emit(testEnvironment, manifestResources, emitOptions);
                 _allModuleData = testEnvironment.GetAllModuleData();
 
-                if (peVerify)
+                if (peVerify == Verification.Passes)
                 {
                     testEnvironment.PeVerify();
+                }
+                else if (peVerify == Verification.Fails)
+                {
+                    Assert.Throws<PeVerifyException>(() => testEnvironment.PeVerify());
                 }
 
                 if (expectedSignatures != null)
@@ -284,6 +288,23 @@ namespace Microsoft.CodeAnalysis.Test.Utilities
         public void VerifyOperationTree(string symbolToVerify, string expectedOperationTree, bool skipImplicitlyDeclaredSymbols = false)
         {
             _compilation.VerifyOperationTree(symbolToVerify, expectedOperationTree, skipImplicitlyDeclaredSymbols);
+        }
+
+        /// <summary>
+        /// Useful for verifying the expected variables are hoisted for closures, async, and iterator methods.
+        /// </summary>
+        public void VerifySynthesizedFields(string containingTypeName, params string[] expectedFields)
+        {
+            var types = TestData.Module.GetSynthesizedMembers();
+            Assert.Contains(types.Keys, t => containingTypeName == t.ToString());
+            var members = TestData.Module.GetSynthesizedMembers()
+                .Where(e => e.Key.ToString() == containingTypeName)
+                .Single()
+                .Value
+                .OfType<IFieldSymbol>()
+                .Select(f => $"{f.Type.ToString()} {f.Name}")
+                .ToList();
+            AssertEx.SetEqual(expectedFields, members);
         }
     }
 }

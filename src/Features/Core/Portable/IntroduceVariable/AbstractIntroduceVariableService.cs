@@ -225,7 +225,7 @@ namespace Microsoft.CodeAnalysis.IntroduceVariable
             var semanticFacts = document.Document.GetLanguageService<ISemanticFactsService>();
 
             var semanticModel = document.SemanticModel;
-            var existingSymbols = GetExistingSymbols(semanticModel, container, cancellationToken);
+            var existingSymbols = semanticModel.GetExistingSymbols(container, cancellationToken);
 
             var baseName = semanticFacts.GenerateNameForExpression(
                 semanticModel, expression, capitalize: isConstant, cancellationToken: cancellationToken);
@@ -236,44 +236,6 @@ namespace Microsoft.CodeAnalysis.IntroduceVariable
             return syntaxFacts.ToIdentifierToken(
                 NameGenerator.EnsureUniqueness(baseName, reservedNames, syntaxFacts.IsCaseSensitive));
         }
-
-        private static HashSet<ISymbol> GetExistingSymbols(
-            SemanticModel semanticModel, SyntaxNode container, CancellationToken cancellationToken)
-        {
-            var symbols = new HashSet<ISymbol>();
-            if (container != null)
-            {
-                GetExistingSymbols(semanticModel, container, symbols, cancellationToken);
-            }
-
-            return symbols;
-        }
-
-        private static void GetExistingSymbols(
-            SemanticModel semanticModel, SyntaxNode node, 
-            HashSet<ISymbol> symbols, CancellationToken cancellationToken)
-        {
-            var symbol = semanticModel.GetDeclaredSymbol(node, cancellationToken);
-
-            // Ignore an annonymous type property.  It's ok if they have a name that 
-            // matches the name of the local we're introducing.
-            if (symbol != null &&
-                !IsAnonymousTypeProperty(symbol))
-            {
-                symbols.Add(symbol);
-            }
-
-            foreach (var child in node.ChildNodesAndTokens())
-            {
-                if (child.IsNode)
-                {
-                    GetExistingSymbols(semanticModel, child.AsNode(), symbols, cancellationToken);
-                }
-            }
-        }
-
-        private static bool IsAnonymousTypeProperty(ISymbol symbol)
-            => symbol.Kind == SymbolKind.Property && symbol.ContainingType.IsAnonymousType;
 
         protected ISet<TExpressionSyntax> FindMatches(
             SemanticDocument originalDocument,

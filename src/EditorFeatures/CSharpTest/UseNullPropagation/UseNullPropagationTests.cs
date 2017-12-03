@@ -104,6 +104,54 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsUseNullPropagation)]
+        public async Task TestWithNullableType()
+        {
+            await TestInRegularAndScriptAsync(
+@"
+class C
+{
+    public int? f;
+    void M(C c)
+    {
+        int? x = [||]c != null ? c.f : null;
+    }
+}",
+@"
+class C
+{
+    public int? f;
+    void M(C c)
+    {
+        int? x = c?.f;
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsUseNullPropagation)]
+        public async Task TestWithNullableTypeAndObjectCast()
+        {
+            await TestInRegularAndScriptAsync(
+@"
+class C
+{
+    public int? f;
+    void M(C c)
+    {
+        int? x = (object)[||]c != null ? c.f : null;
+    }
+}",
+@"
+class C
+{
+    public int? f;
+    void M(C c)
+    {
+        int? x = c?.f;
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsUseNullPropagation)]
         public async Task TestRight_NotEquals()
         {
             await TestInRegularAndScriptAsync(
@@ -330,7 +378,7 @@ using System;
 
 class D
 {
-    void Foo()
+    void Goo()
     {
         var c = new C();
         Action<string> a = [||]c != null ? c.M : (Action<string>)null;

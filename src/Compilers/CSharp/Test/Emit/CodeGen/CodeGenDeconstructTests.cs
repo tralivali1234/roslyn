@@ -203,6 +203,38 @@ class C
 
             var comp = CompileAndVerify(source, expectedOutput: "1 hello", additionalRefs: s_valueTupleRefs);
             comp.VerifyDiagnostics();
+
+            var tree = comp.Compilation.SyntaxTrees.First();
+            var model = comp.Compilation.GetSemanticModel(tree);
+            var deconstruction = (AssignmentExpressionSyntax)tree.FindNodeOrTokenByKind(SyntaxKind.SimpleAssignmentExpression).AsNode();
+            Assert.Equal("(x, y) = new C()", deconstruction.ToString());
+            var deconstructionInfo = model.GetDeconstructionInfo(deconstruction);
+
+            var firstDeconstructMethod = comp.Compilation.GetTypeByMetadataName("C").GetMembers(WellKnownMemberNames.DeconstructMethodName)
+                .OfType<SourceOrdinaryMethodSymbol>().Where(m => m.ParameterCount == 2).Single();
+            Assert.Equal(firstDeconstructMethod, deconstructionInfo.Method);
+
+            Assert.Equal("void C.Deconstruct(out System.Int32 a, out System.String b)",
+                deconstructionInfo.Method.ToTestDisplayString());
+            Assert.Null(deconstructionInfo.Conversion);
+
+            var nested = deconstructionInfo.Nested;
+            Assert.Equal(2, nested.Length);
+
+            Assert.Null(nested[0].Method);
+            Assert.Equal(ConversionKind.ImplicitNumeric, nested[0].Conversion.Value.Kind);
+            Assert.Empty(nested[0].Nested);
+
+            Assert.Null(nested[1].Method);
+            Assert.Equal(ConversionKind.Identity, nested[1].Conversion.Value.Kind);
+            Assert.Empty(nested[1].Nested);
+
+            var assignment = (AssignmentExpressionSyntax)tree.FindNodeOrTokenByKind(SyntaxKind.SimpleAssignmentExpression, occurrence: 2).AsNode();
+            Assert.Equal("a = 1", assignment.ToString());
+            var defaultInfo = model.GetDeconstructionInfo(assignment);
+            Assert.Null(defaultInfo.Method);
+            Assert.Empty(defaultInfo.Nested);
+            Assert.Equal(ConversionKind.NoConversion, defaultInfo.Conversion.Value.Kind);
         }
 
         [Fact]
@@ -475,10 +507,9 @@ class C
 
             var comp = CreateStandardCompilation(source);
             comp.VerifyDiagnostics(
-                // (4,58): error CS1108: A parameter cannot have all the specified modifiers; there are too many modifiers on the parameter
+                // (4,58): error CS8328:  The parameter modifier 'params' cannot be used with 'out' 
                 //     public void Deconstruct(out int a, out string b, out params int[] c)
-                Diagnostic(ErrorCode.ERR_MultiParamMod, "params").WithLocation(4, 58)
-                );
+                Diagnostic(ErrorCode.ERR_BadParameterModifiers, "params").WithArguments("params", "out").WithLocation(4, 58));
         }
 
         [Fact]
@@ -718,13 +749,13 @@ class C
     static void Main()
     {
         int y;
-        (Foo()[Bar()], y) = new C();
+        (Goo()[Bar()], y) = new C();
         System.Console.WriteLine($""Final array values[2] {array.values[2]}"");
     }
 
-    static SomeArray Foo()
+    static SomeArray Goo()
     {
-        System.Console.WriteLine($""Foo"");
+        System.Console.WriteLine($""Goo"");
         array = new SomeArray();
         return array;
     }
@@ -753,7 +784,7 @@ class SomeArray
 }
 ";
             var expected =
-@"Foo
+@"Goo
 Bar
 Deconstruct
 indexSet (with value 101)
@@ -773,15 +804,40 @@ class C
     {
         long x;
         string y;
-
-        (x, y) = (1, ""hello"");
+        int i = 1;
+        (x, y) = (i, ""hello"");
         System.Console.WriteLine(x + "" "" + y);
     }
 }
 ";
 
-            var comp = CompileAndVerify(source, expectedOutput: "1 hello", additionalRefs: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            var comp = CompileAndVerify(source, expectedOutput: "1 hello", additionalRefs: s_valueTupleRefs);
             comp.VerifyDiagnostics();
+
+            var tree = comp.Compilation.SyntaxTrees.First();
+            var model = comp.Compilation.GetSemanticModel(tree);
+            var deconstruction = tree.GetRoot().DescendantNodes().OfType<AssignmentExpressionSyntax>().Single();
+            var deconstructionInfo = model.GetDeconstructionInfo(deconstruction);
+
+            Assert.Null(deconstructionInfo.Method);
+            Assert.Null(deconstructionInfo.Conversion);
+
+            var nested = deconstructionInfo.Nested;
+            Assert.Equal(2, nested.Length);
+
+            Assert.Null(nested[0].Method);
+            Assert.Equal(ConversionKind.Identity, nested[0].Conversion.Value.Kind);
+            Assert.Empty(nested[0].Nested);
+
+            Assert.Null(nested[1].Method);
+            Assert.Equal(ConversionKind.Identity, nested[1].Conversion.Value.Kind);
+            Assert.Empty(nested[1].Nested);
+
+            var tuple = tree.GetRoot().DescendantNodes().OfType<TupleExpressionSyntax>().ElementAt(1);
+            Assert.Equal(@"(i, ""hello"")", tuple.ToString());
+            var tupleConversion = model.GetConversion(tuple);
+            Assert.Equal(ConversionKind.ImplicitTupleLiteral, tupleConversion.Kind);
+            Assert.Equal(ConversionKind.ImplicitNumeric, tupleConversion.UnderlyingConversions[0].Kind);
         }
 
         [Fact]
@@ -1249,10 +1305,37 @@ class C
 ";
             var comp = CreateStandardCompilation(source, parseOptions: TestOptions.Regular7);
             comp.VerifyDiagnostics(
-                // (7,18): error CS8179: Predefined type 'System.ValueTuple`2' is not defined or imported, or is ambiguous (imported twice)
+                // (7,18): error CS8179: Predefined type 'System.ValueTuple`2' is not defined or imported
                 //         (x, y) = (1, 2);
                 Diagnostic(ErrorCode.ERR_PredefinedValueTupleTypeNotFound, "(1, 2)").WithArguments("System.ValueTuple`2").WithLocation(7, 18)
                 );
+        }
+
+        [Fact]
+        [WorkItem(18629, "https://github.com/dotnet/roslyn/issues/18629")]
+        public void ValueTupleRequiredWhenRightHandSideIsTupleButNoReferenceEmitted()
+        {
+            string source = @"
+class C
+{
+    public static void Main()
+    {
+        int x, y;
+        (x, y) = (1, 2);
+    }
+}
+";
+            var comp = CreateStandardCompilation(source, parseOptions: TestOptions.Regular7, references: s_valueTupleRefs);
+            comp.VerifyDiagnostics();
+
+            Action<PEAssembly> assemblyValidator = assembly =>
+            {
+                var reader = assembly.GetMetadataReader();
+                var names = reader.GetAssemblyRefNames().Select(name => reader.GetString(name));
+                Assert.Empty(names.Where(name => name.Contains("ValueTuple")));
+            };
+
+            CompileAndVerify(comp, assemblyValidator: assemblyValidator);
         }
 
         [Fact]
@@ -1945,6 +2028,42 @@ class C
 
             var comp = CompileAndVerify(source, expectedOutput: "1 hello world", additionalRefs: s_valueTupleRefs, parseOptions: TestOptions.Regular.WithRefsFeature());
             comp.VerifyDiagnostics();
+        
+            var tree = comp.Compilation.SyntaxTrees.First();
+            var model = comp.Compilation.GetSemanticModel(tree);
+            var deconstruction = (AssignmentExpressionSyntax)tree.FindNodeOrTokenByKind(SyntaxKind.SimpleAssignmentExpression).AsNode();
+            Assert.Equal(@"(x, (y, z)) = Tuple.Create(1, Tuple.Create(""hello"", ""world""))", deconstruction.ToString());
+            var deconstructionInfo = model.GetDeconstructionInfo(deconstruction);
+
+            Assert.Equal("void System.TupleExtensions.Deconstruct<System.Int32, System.Tuple<System.String, System.String>>(" +
+                "this System.Tuple<System.Int32, System.Tuple<System.String, System.String>> value, " +
+                "out System.Int32 item1, out System.Tuple<System.String, System.String> item2)",
+                deconstructionInfo.Method.ToTestDisplayString());
+            Assert.Null(deconstructionInfo.Conversion);
+
+            var nested = deconstructionInfo.Nested;
+            Assert.Equal(2, nested.Length);
+
+            Assert.Null(nested[0].Method);
+            Assert.Equal(ConversionKind.Identity, nested[0].Conversion.Value.Kind);
+            Assert.Empty(nested[0].Nested);
+
+            Assert.Equal("void System.TupleExtensions.Deconstruct<System.String, System.String>(" +
+                "this System.Tuple<System.String, System.String> value, " +
+                "out System.String item1, out System.String item2)",
+                nested[1].Method.ToTestDisplayString());
+            Assert.Null(nested[1].Conversion);
+
+            var nested2 = nested[1].Nested;
+            Assert.Equal(2, nested.Length);
+
+            Assert.Null(nested2[0].Method);
+            Assert.Equal(ConversionKind.Identity, nested2[0].Conversion.Value.Kind);
+            Assert.Empty(nested2[0].Nested);
+
+            Assert.Null(nested2[1].Method);
+            Assert.Equal(ConversionKind.Identity, nested2[1].Conversion.Value.Kind);
+            Assert.Empty(nested2[1].Nested);
         }
 
         [Fact]
@@ -3503,6 +3622,24 @@ class C
                 Assert.Equal("var", x12Var.Type.ToString());
                 Assert.Equal("(System.Int32 x1, System.Int32 x2)", model.GetTypeInfo(x12Var).Type.ToTestDisplayString());
                 Assert.Null(model.GetSymbolInfo(x12Var.Type).Symbol); // The var in `var (x1, x2)` has no symbol
+
+                // verify deconstruction info
+                var deconstructionForeach = tree.GetRoot().DescendantNodes().OfType<ForEachVariableStatementSyntax>().Single();
+                var deconstructionInfo = model.GetDeconstructionInfo(deconstructionForeach);
+
+                Assert.Null(deconstructionInfo.Method);
+                Assert.Null(deconstructionInfo.Conversion);
+
+                var nested = deconstructionInfo.Nested;
+                Assert.Equal(2, nested.Length);
+
+                Assert.Null(nested[0].Method);
+                Assert.Equal(ConversionKind.Identity, nested[0].Conversion.Value.Kind);
+                Assert.Empty(nested[0].Nested);
+
+                Assert.Null(nested[1].Method);
+                Assert.Equal(ConversionKind.Identity, nested[1].Conversion.Value.Kind);
+                Assert.Empty(nested[1].Nested);
             };
 
             var comp = CompileAndVerify(source, expectedOutput: "1 2", additionalRefs: s_valueTupleRefs, sourceSymbolValidator: validator);
@@ -3841,6 +3978,35 @@ static class Extension
   IL_0039:  blt.s      IL_000a
   IL_003b:  ret
 }");
+        }
+
+        [Fact]
+        [WorkItem(22495, "https://github.com/dotnet/roslyn/issues/22495")]
+        public void ForEachCollectionSymbol()
+        {
+            string source = @"
+using System.Collections.Generic;
+class Deconstructable
+{
+    void M(IEnumerable<Deconstructable> x)
+    {
+        foreach (var (y1, y2) in x)
+        {
+        }
+    }
+    void Deconstruct(out int i, out int j) { i = 0; j = 0; }
+}
+";
+            var compilation = CreateStandardCompilation(source, references: s_valueTupleRefs);
+            var tree = compilation.SyntaxTrees.First();
+            var model = compilation.GetSemanticModel(tree);
+
+            var collection = tree.GetRoot().DescendantNodes().OfType<ForEachVariableStatementSyntax>().Single().Expression;
+            Assert.Equal("x", collection.ToString());
+            var symbol = model.GetSymbolInfo(collection).Symbol;
+            Assert.Equal(SymbolKind.Parameter, symbol.Kind);
+            Assert.Equal("x", symbol.Name);
+            Assert.Equal("System.Collections.Generic.IEnumerable<Deconstructable> x", symbol.ToTestDisplayString());
         }
 
         [Fact]
@@ -4392,9 +4558,6 @@ class C
 ";
             var comp = CreateStandardCompilation(source, references: s_valueTupleRefs);
             comp.VerifyDiagnostics(
-                // (3,2): error CS1520: Method must have a return type
-                // {
-                Diagnostic(ErrorCode.ERR_MemberNeedsType, "").WithLocation(3, 2),
                 // (4,11): error CS1001: Identifier expected
                 //     var (x, y) = (1, 2);
                 Diagnostic(ErrorCode.ERR_IdentifierExpected, ",").WithLocation(4, 11),
@@ -4419,15 +4582,18 @@ class C
                 // (4,19): error CS1519: Invalid token '1' in class, struct, or interface member declaration
                 //     var (x, y) = (1, 2);
                 Diagnostic(ErrorCode.ERR_InvalidMemberDecl, "1").WithArguments("1").WithLocation(4, 19),
+                // (4,5): error CS1520: Method must have a return type
+                //     var (x, y) = (1, 2);
+                Diagnostic(ErrorCode.ERR_MemberNeedsType, "var").WithLocation(4, 5),
+                // (4,5): error CS0501: 'C.C(x, y)' must declare a body because it is not marked abstract, extern, or partial
+                //     var (x, y) = (1, 2);
+                Diagnostic(ErrorCode.ERR_ConcreteMissingBody, "var").WithArguments("C.C(x, y)").WithLocation(4, 5),
                 // (4,10): error CS0246: The type or namespace name 'x' could not be found (are you missing a using directive or an assembly reference?)
                 //     var (x, y) = (1, 2);
                 Diagnostic(ErrorCode.ERR_SingleTypeNameNotFound, "x").WithArguments("x").WithLocation(4, 10),
                 // (4,13): error CS0246: The type or namespace name 'y' could not be found (are you missing a using directive or an assembly reference?)
                 //     var (x, y) = (1, 2);
-                Diagnostic(ErrorCode.ERR_SingleTypeNameNotFound, "y").WithArguments("y").WithLocation(4, 13),
-                // (4,5): error CS0501: 'C.var(x, y)' must declare a body because it is not marked abstract, extern, or partial
-                //     var (x, y) = (1, 2);
-                Diagnostic(ErrorCode.ERR_ConcreteMissingBody, "var").WithArguments("C.var(x, y)").WithLocation(4, 5)
+                Diagnostic(ErrorCode.ERR_SingleTypeNameNotFound, "y").WithArguments("y").WithLocation(4, 13)
                 );
 
             var nodes = comp.SyntaxTrees[0].GetCompilationUnitRoot().DescendantNodesAndSelf();
@@ -6701,11 +6867,11 @@ class C
 
     static (int, (string, long)) M()
     {
-        return (5, (""Foo"", 34983490));
+        return (5, (""Goo"", 34983490));
     }
 }
 ";
-            var comp = CompileAndVerify(source, expectedOutput: "5 (Foo, 34983490)", additionalRefs: s_valueTupleRefs);
+            var comp = CompileAndVerify(source, expectedOutput: "5 (Goo, 34983490)", additionalRefs: s_valueTupleRefs);
             comp.VerifyDiagnostics();
         }
 
@@ -6727,7 +6893,7 @@ class C
     static ref int var(int a, int b) { return ref i; }
 }
 ";
-            var comp = CompileAndVerify(source, expectedOutput: "42", verify: false);
+            var comp = CompileAndVerify(source, expectedOutput: "42", verify: Verification.Passes);
             comp.VerifyDiagnostics();
         }
 
@@ -6752,7 +6918,7 @@ class Program
             compilation.VerifyDiagnostics();
 
             // PEVerify fails with ref return https://github.com/dotnet/roslyn/issues/12285
-            CompileAndVerify(compilation, expectedOutput: "10", verify: false);
+            CompileAndVerify(compilation, expectedOutput: "10", verify: Verification.Fails);
         }
 
         [Fact]
@@ -7378,6 +7544,7 @@ class C
                 );
         }
 
+        [CompilerTrait(CompilerFeature.IOperation)]
         [Fact]
         public void DeconstructionWarnsForSelfAssignment_WithExplicitTupleConversion()
         {
@@ -7401,6 +7568,32 @@ class C
             var comp = CreateCompilationWithMscorlib45(source, references: s_valueTupleRefs, options: TestOptions.DebugDll);
             comp.VerifyDiagnostics(
                 );
+
+            var tree = comp.SyntaxTrees.Single();
+            var node = tree.GetRoot().DescendantNodes().OfType<CastExpressionSyntax>().Single();
+
+            Assert.Equal("((int, int))(y, b)", node.ToString());
+
+            comp.VerifyOperationTree(node, expectedOperationTree:
+@"
+IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: (System.Int32, System.Int32)) (Syntax: '((int, int))(y, b)')
+  Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+  Operand: 
+    ITupleOperation (OperationKind.Tuple, Type: (System.Int32 y, System.Int32 b)) (Syntax: '(y, b)')
+      NaturalType: (System.Int32 y, System.Byte b)
+      Elements(2):
+          IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32, IsImplicit) (Syntax: 'y')
+            Conversion: CommonConversion (Exists: True, IsIdentity: True, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+            Operand: 
+              IFieldReferenceOperation: System.Int32 C.y (OperationKind.FieldReference, Type: System.Int32) (Syntax: 'y')
+                Instance Receiver: 
+                  IInstanceReferenceOperation (OperationKind.InstanceReference, Type: C, IsImplicit) (Syntax: 'y')
+          IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32, IsImplicit) (Syntax: 'b')
+            Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: True, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+            Operand: 
+              IFieldReferenceOperation: System.Byte C.b (OperationKind.FieldReference, Type: System.Byte) (Syntax: 'b')
+                Instance Receiver: 
+                  IInstanceReferenceOperation (OperationKind.InstanceReference, Type: C, IsImplicit) (Syntax: 'b')");
         }
 
         [Fact]
@@ -7580,6 +7773,7 @@ class D
             CompileAndVerify(source, expectedOutput: @"Convert Convert2 1", additionalRefs: s_valueTupleRefs);
         }
 
+        [CompilerTrait(CompilerFeature.IOperation)]
         [Fact, WorkItem(19398, "https://github.com/dotnet/roslyn/issues/19398")]
         public void TupleCastInDeconstruction3()
         {
@@ -7600,9 +7794,38 @@ class D
     public static explicit operator byte(D c) { System.Console.Write(""Convert2 ""); return 2; }
     public D() { System.Console.Write(""D ""); }
 }";
-            CompileAndVerify(source, expectedOutput: @"C Convert D Convert2 A B", additionalRefs: s_valueTupleRefs);
+            var compilation = CompileAndVerify(source, expectedOutput: @"C Convert D Convert2 A B", additionalRefs: s_valueTupleRefs).Compilation;
+            var tree = compilation.SyntaxTrees.Single();
+            var node = tree.GetRoot().DescendantNodes().OfType<CastExpressionSyntax>().Single();
+
+            Assert.Equal("((byte, byte))(new C(), new D())", node.ToString());
+
+            compilation.VerifyOperationTree(node, expectedOperationTree:
+@"
+IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: (System.Byte, System.Byte)) (Syntax: '((byte, byt ... ), new D())')
+  Conversion: CommonConversion (Exists: True, IsIdentity: True, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+  Operand: 
+    ITupleOperation (OperationKind.Tuple, Type: (System.Byte, System.Byte)) (Syntax: '(new C(), new D())')
+      NaturalType: (C, D)
+      Elements(2):
+          IConversionOperation (TryCast: False, Unchecked) (OperatorMethod: System.Byte C.op_Explicit(C c)) (OperationKind.Conversion, Type: System.Byte, IsImplicit) (Syntax: 'new C()')
+            Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: True) (MethodSymbol: System.Byte C.op_Explicit(C c))
+            Operand: 
+              IObjectCreationOperation (Constructor: C..ctor()) (OperationKind.ObjectCreation, Type: C) (Syntax: 'new C()')
+                Arguments(0)
+                Initializer: 
+                  null
+          IConversionOperation (TryCast: False, Unchecked) (OperatorMethod: System.Byte D.op_Explicit(D c)) (OperationKind.Conversion, Type: System.Byte, IsImplicit) (Syntax: 'new D()')
+            Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: True) (MethodSymbol: System.Byte D.op_Explicit(D c))
+            Operand: 
+              IObjectCreationOperation (Constructor: D..ctor()) (OperationKind.ObjectCreation, Type: D) (Syntax: 'new D()')
+                Arguments(0)
+                Initializer: 
+                  null
+");
         }
 
+        [CompilerTrait(CompilerFeature.IOperation)]
         [Fact, WorkItem(19398, "https://github.com/dotnet/roslyn/issues/19398")]
         public void TupleCastInDeconstruction4()
         {
@@ -7615,7 +7838,52 @@ class C
         System.Console.Write($""{a}"");
     }
 }";
-            CompileAndVerify(source, expectedOutput: @"1", additionalRefs: s_valueTupleRefs);
+            var compilation = CompileAndVerify(source, expectedOutput: @"1", additionalRefs: s_valueTupleRefs).Compilation;
+            var tree = compilation.SyntaxTrees.Single();
+            var node = tree.GetRoot().DescendantNodes().OfType<CastExpressionSyntax>().ElementAt(1);
+
+            Assert.Equal("((int, int))(1L, 2L)", node.ToString());
+
+            compilation.VerifyOperationTree(node, expectedOperationTree:
+@"
+IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: (System.Int32, System.Int32)) (Syntax: '((int, int))(1L, 2L)')
+  Conversion: CommonConversion (Exists: True, IsIdentity: True, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+  Operand: 
+    ITupleOperation (OperationKind.Tuple, Type: (System.Int32, System.Int32)) (Syntax: '(1L, 2L)')
+      NaturalType: (System.Int64, System.Int64)
+      Elements(2):
+          IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32, Constant: 1, IsImplicit) (Syntax: '1L')
+            Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: True, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+            Operand: 
+              ILiteralOperation (OperationKind.Literal, Type: System.Int64, Constant: 1) (Syntax: '1L')
+          IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32, Constant: 2, IsImplicit) (Syntax: '2L')
+            Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: True, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+            Operand: 
+              ILiteralOperation (OperationKind.Literal, Type: System.Int64, Constant: 2) (Syntax: '2L')
+");
+
+            Assert.Equal("((short, short))((int, int))(1L, 2L)", node.Parent.ToString());
+
+            compilation.VerifyOperationTree(node.Parent, expectedOperationTree:
+@"
+IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: (System.Int16, System.Int16)) (Syntax: '((short, sh ... t))(1L, 2L)')
+  Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+  Operand: 
+    IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: (System.Int32, System.Int32)) (Syntax: '((int, int))(1L, 2L)')
+      Conversion: CommonConversion (Exists: True, IsIdentity: True, IsNumeric: False, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+      Operand: 
+        ITupleOperation (OperationKind.Tuple, Type: (System.Int32, System.Int32)) (Syntax: '(1L, 2L)')
+          NaturalType: (System.Int64, System.Int64)
+          Elements(2):
+              IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32, Constant: 1, IsImplicit) (Syntax: '1L')
+                Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: True, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+                Operand: 
+                  ILiteralOperation (OperationKind.Literal, Type: System.Int64, Constant: 1) (Syntax: '1L')
+              IConversionOperation (TryCast: False, Unchecked) (OperationKind.Conversion, Type: System.Int32, Constant: 2, IsImplicit) (Syntax: '2L')
+                Conversion: CommonConversion (Exists: True, IsIdentity: False, IsNumeric: True, IsReference: False, IsUserDefined: False) (MethodSymbol: null)
+                Operand: 
+                  ILiteralOperation (OperationKind.Literal, Type: System.Int64, Constant: 2) (Syntax: '2L')
+");
         }
 
         [Fact, WorkItem(19398, "https://github.com/dotnet/roslyn/issues/19398")]
@@ -7701,6 +7969,218 @@ class C
             var comp = CreateStandardCompilation(source, parseOptions: TestOptions.Regular7, references: s_valueTupleRefs, options: TestOptions.DebugExe);
             comp.VerifyDiagnostics();
             CompileAndVerify(comp, expectedOutput: "once");
+        }
+
+        [WorkItem(21028, "https://github.com/dotnet/roslyn/issues/21028")]
+        [Fact]
+        public void InferredName()
+        {
+            var source =
+@"class C
+{
+    static void Main()
+    {
+        int x = 0, y = 1;
+        var t = (x, y);
+        var (a, b) = t;
+    }
+}";
+            // C# 7.0
+            var comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+            // C# 7.1
+            comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7_1),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [WorkItem(21028, "https://github.com/dotnet/roslyn/issues/21028")]
+        [Fact]
+        public void InferredName_ConditionalOperator()
+        {
+            var source =
+@"class C
+{
+    static void M(int a, int b, bool c)
+    {
+        (var x, var y) = c ? (a, default(object)) : (b, null);
+        (x, y) = c ? (a, default(string)) : (b, default(object));
+    }
+}";
+            // C# 7.0
+            var comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+            // C# 7.1
+            comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7_1),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [WorkItem(21028, "https://github.com/dotnet/roslyn/issues/21028")]
+        [Fact]
+        public void InferredName_ImplicitArray()
+        {
+            var source =
+@"class C
+{
+    static void M(int x)
+    {
+        int y;
+        object z;
+        (y, z) = (new [] { (x, default(object)), (2, 3) })[0];
+    }
+}";
+            // C# 7.0
+            var comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+            // C# 7.1
+            comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7_1),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [WorkItem(21028, "https://github.com/dotnet/roslyn/issues/21028")]
+        [Fact]
+        public void InferredName_Lambda()
+        {
+            var source =
+@"class C
+{
+    static T F<T>(System.Func<object, bool, T> f)
+    {
+        return f(null, false);
+    }
+    static void M()
+    {
+        var (x, y) = F((a, b) =>
+        {
+            if (b) return (default(object), a);
+            return (null, null);
+        });
+    }
+}";
+            // C# 7.0
+            var comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+            // C# 7.1
+            comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7_1),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [WorkItem(21028, "https://github.com/dotnet/roslyn/issues/21028")]
+        [Fact]
+        public void InferredName_ConditionalOperator_LongTuple()
+        {
+            var source =
+@"class C
+{
+    static void M(object a, object b, bool c)
+    {
+        var (_1, _2, _3, _4, _5, _6, _7, _8, _9, _10) = c ?
+            (1, 2, 3, 4, 5, 6, 7, a, b, 10) :
+            (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+    }
+}";
+            // C# 7.0
+            var comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+            // C# 7.1
+            comp = CreateStandardCompilation(
+                source,
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7_1),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics();
+        }
+
+        [WorkItem(21028, "https://github.com/dotnet/roslyn/issues/21028")]
+        [Fact]
+        public void InferredName_ConditionalOperator_UseSite()
+        {
+            var source =
+@"class C
+{
+    static void M(int a, int b, bool c)
+    {
+        var (x, y) = c ? ((object)1, a) : (b, 2);
+    }
+}
+namespace System
+{
+    struct ValueTuple<T1, T2>
+    {
+        public T1 Item1;
+        private T2 Item2;
+        public ValueTuple(T1 item1, T2 item2)
+        {
+            Item1 = item1;
+            Item2 = item2;
+        }
+    }
+}";
+            // C# 7.0
+            var comp = CreateStandardCompilation(
+                source,
+                assemblyName: "39f5d0e8-2935-4207-a74d-517a8e55af08",
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics(
+                // (5,22): error CS8128: Member 'Item2' was not found on type 'ValueTuple<T1, T2>' from assembly '39f5d0e8-2935-4207-a74d-517a8e55af08, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null'.
+                //         var (x, y) = c ? ((object)1, a) : (b, 2);
+                Diagnostic(ErrorCode.ERR_PredefinedTypeMemberNotFoundInAssembly, "c ? ((object)1, a) : (b, 2)").WithArguments("Item2", "System.ValueTuple<T1, T2>", "39f5d0e8-2935-4207-a74d-517a8e55af08, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null").WithLocation(5, 22));
+            // C# 7.1
+            comp = CreateStandardCompilation(
+                source,
+                assemblyName: "39f5d0e8-2935-4207-a74d-517a8e55af08",
+                parseOptions: TestOptions.Regular.WithLanguageVersion(LanguageVersion.CSharp7_1),
+                references: new[] { ValueTupleRef, SystemRuntimeFacadeRef });
+            comp.VerifyEmitDiagnostics(
+                // (5,22): error CS8128: Member 'Item2' was not found on type 'ValueTuple<T1, T2>' from assembly '39f5d0e8-2935-4207-a74d-517a8e55af08, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null'.
+                //         var (x, y) = c ? ((object)1, a) : (b, 2);
+                Diagnostic(ErrorCode.ERR_PredefinedTypeMemberNotFoundInAssembly, "c ? ((object)1, a) : (b, 2)").WithArguments("Item2", "System.ValueTuple<T1, T2>", "39f5d0e8-2935-4207-a74d-517a8e55af08, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null").WithLocation(5, 22));
+        }
+
+        [Fact]
+        public void TestGetDeconstructionInfoOnIncompleteCode()
+        {
+            string source = @"
+class C
+{
+    void M() { var (y1, y2) =}
+    void Deconstruct(out int x1, out int x2) { x1 = 1; x2 = 2; }
+}
+";
+            var comp = CreateStandardCompilation(source);
+            var tree = comp.SyntaxTrees.First();
+            var model = comp.GetSemanticModel(tree);
+            var node = tree.GetRoot().DescendantNodes().OfType<AssignmentExpressionSyntax>().First();
+            Assert.Equal("var (y1, y2) =", node.ToString());
+            var info = model.GetDeconstructionInfo(node);
+            Assert.Null(info.Method);
+            Assert.Empty(info.Nested);
         }
     }
 }

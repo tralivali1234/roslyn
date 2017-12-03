@@ -225,9 +225,6 @@
   <data name="NullValueInPathMap" xml:space="preserve">
     <value>A value in the pathMap is null.</value>
   </data>
-  <data name="KeyInPathMapEndsWithSeparator" xml:space="preserve">
-    <value>A key in the pathMap ends with a path separator.</value>
-  </data>
   <data name="CompilationOptionsMustNotHaveErrors" xml:space="preserve">
     <value>Compilation options must not have errors.</value>
   </data>
@@ -579,9 +576,6 @@
   <data name="TupleUnderlyingTypeMustBeTupleCompatible" xml:space="preserve">
     <value>The underlying type for a tuple must be tuple-compatible.</value>
   </data>
-  <data name="IOperationFeatureDisabled" xml:space="preserve">
-    <value>Feature 'IOperation' is disabled.</value>
-  </data>
   <data name="UnrecognizedResourceFileFormat" xml:space="preserve">
     <value>Unrecognized resource file format.</value>
   </data>
@@ -591,8 +585,8 @@
   <data name="StreamIsTooLong" xml:space="preserve">
     <value>Stream is too long.</value>
   </data>
-  <data name="EmbeddedTextsRequirePortablePdb" xml:space="preserve">
-    <value>Embedded texts are only supported when emitting Portable PDB.</value>
+  <data name="EmbeddedTextsRequirePdb" xml:space="preserve">
+    <value>Embedded texts are only supported when emitting a PDB.</value>
   </data>
   <data name="TheStreamCannotBeWrittenTo" xml:space="preserve">
     <value>The stream cannot be written to.</value>
