@@ -46,7 +46,7 @@ End Module
                              </file>
                          </compilation>
 
-            Dim comp = CompilationUtils.CreateCompilationWithMscorlibAndVBRuntime(source)
+            Dim comp = CompilationUtils.CreateCompilationWithMscorlib40AndVBRuntime(source)
             Dim tree = comp.SyntaxTrees.Single()
             Dim model = comp.GetSemanticModel(tree)
             Dim nodes = tree.GetRoot().DescendantNodes().OfType(Of AssignmentStatementSyntax).ToArray()
@@ -171,7 +171,7 @@ End Module
                              </file>
                          </compilation>
 
-            Dim comp = CompilationUtils.CreateCompilationWithMscorlibAndVBRuntime(source)
+            Dim comp = CompilationUtils.CreateCompilationWithMscorlib40AndVBRuntime(source)
             Dim tree = comp.SyntaxTrees.Single()
             Dim model = comp.GetSemanticModel(tree)
             Dim nodes = tree.GetRoot().DescendantNodes().OfType(Of AssignmentStatementSyntax).ToArray()
@@ -350,7 +350,7 @@ End Module
                              </file>
                          </compilation>
 
-            Dim comp = CompilationUtils.CreateCompilationWithMscorlibAndVBRuntime(source)
+            Dim comp = CompilationUtils.CreateCompilationWithMscorlib40AndVBRuntime(source)
             Dim tree = comp.SyntaxTrees.Single()
 
             comp.AssertTheseDiagnostics(
@@ -522,7 +522,7 @@ BC30518: Overload resolution failed because no accessible 'P1' can be called wit
             Dim fileName = "a.vb"
             Dim syntaxTree = Parse(sourceCode, fileName, options:=Nothing)
 
-            Dim compilation = CreateCompilationWithMscorlib45AndVBRuntime({syntaxTree}, DefaultVbReferences.Concat({ValueTupleRef, SystemRuntimeFacadeRef}))
+            Dim compilation = CreateEmptyCompilation({syntaxTree}, DefaultVbReferences.Concat({ValueTupleRef, SystemRuntimeFacadeRef}))
             Dim tree = (From t In compilation.SyntaxTrees Where t.FilePath = fileName).Single()
             Dim model = compilation.GetSemanticModel(tree)
 
@@ -537,7 +537,7 @@ BC30518: Overload resolution failed because no accessible 'P1' can be called wit
             Dim fileName = "a.vb"
             Dim syntaxTree = Parse(sourceCode, fileName, options:=Nothing)
 
-            Dim compilation = CreateCompilationWithMscorlib45AndVBRuntime({syntaxTree}, DefaultVbReferences.Concat({ValueTupleRef, SystemRuntimeFacadeRef}))
+            Dim compilation = CreateEmptyCompilation({syntaxTree}, DefaultVbReferences.Concat({ValueTupleRef, SystemRuntimeFacadeRef}))
             Dim tree = (From t In compilation.SyntaxTrees Where t.FilePath = fileName).Single()
             Dim model = compilation.GetSemanticModel(tree)
 
@@ -871,6 +871,43 @@ End Class
 
             ' Verify we return null operation for child nodes of member access expression.
             Assert.Null(model.GetOperation(expr.Name))
+        End Sub
+
+        <CompilerTrait(CompilerFeature.IOperation)>
+        <WorkItem(23283, "https://github.com/dotnet/roslyn/issues/23283")>
+        <Fact()>
+        Public Sub TestOptionStatement_01()
+            Dim source = <![CDATA[
+Class Test
+    Sub Method()
+        Option Strict On 'BIND:"Option Strict On"
+    End Sub
+End Class
+]]>.Value
+
+            Dim expectedOperationTree = <![CDATA[
+IInvalidOperation (OperationKind.Invalid, Type: null, IsInvalid) (Syntax: 'Option Strict On')
+  Children(0)
+]]>.Value
+
+            Dim expectedDiagnostics = <![CDATA[
+BC30024: Statement is not valid inside a method.
+        Option Strict On 'BIND:"Option Strict On"
+        ~~~~~~~~~~~~~~~~
+]]>.Value
+
+            VerifyOperationTreeAndDiagnosticsForTest(Of StatementSyntax)(source, expectedOperationTree, expectedDiagnostics)
+        End Sub
+
+        <CompilerTrait(CompilerFeature.IOperation)>
+        <WorkItem(23283, "https://github.com/dotnet/roslyn/issues/23283")>
+        <Fact()>
+        Public Sub TestOptionStatement_02()
+            Dim source = <![CDATA[
+Option Strict On 'BIND:"Option Strict On"
+]]>.Value
+
+            VerifyNoOperationTreeForTest(Of StatementSyntax)(source)
         End Sub
     End Class
 End Namespace

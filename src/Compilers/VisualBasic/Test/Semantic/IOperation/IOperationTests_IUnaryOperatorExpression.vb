@@ -1907,7 +1907,7 @@ IConditionalOperation (OperationKind.Conditional, Type: null) (Syntax: 'If x OrE
   Condition: 
     IUnaryOperation (UnaryOperatorKind.True) (OperatorMethod: Function CustomType.op_True(x As CustomType) As System.Boolean) (OperationKind.UnaryOperator, Type: System.Boolean, IsImplicit) (Syntax: 'x OrElse y')
       Operand: 
-        IBinaryOperation (BinaryOperatorKind.ConditionalAnd) (OperatorMethod: Function CustomType.op_BitwiseOr(x As CustomType, y As CustomType) As CustomType) (OperationKind.BinaryOperator, Type: CustomType) (Syntax: 'x OrElse y')
+        IBinaryOperation (BinaryOperatorKind.ConditionalOr) (OperatorMethod: Function CustomType.op_BitwiseOr(x As CustomType, y As CustomType) As CustomType) (OperationKind.BinaryOperator, Type: CustomType) (Syntax: 'x OrElse y')
           Left: 
             ILocalReferenceOperation: x (OperationKind.LocalReference, Type: CustomType) (Syntax: 'x')
           Right: 
@@ -2131,7 +2131,7 @@ IUnaryOperation (UnaryOperatorKind.Minus, IsLifted) (OperationKind.UnaryOperator
             Dim fileName = "a.vb"
             Dim syntaxTree = Parse(source, fileName)
             Dim references = DefaultVbReferences.Concat({ValueTupleRef, SystemRuntimeFacadeRef})
-            Dim compilation = CreateCompilationWithMscorlib45AndVBRuntime({syntaxTree}, references:=references, options:=TestOptions.ReleaseDll.WithOverflowChecks(False))
+            Dim compilation = CreateEmptyCompilation({syntaxTree}, references:=references, options:=TestOptions.ReleaseDll.WithOverflowChecks(False))
 
             VerifyOperationTreeAndDiagnosticsForTest(Of UnaryExpressionSyntax)(compilation, fileName, expectedOperationTree, expectedDiagnostics)
         End Sub
@@ -2158,7 +2158,7 @@ IUnaryOperation (UnaryOperatorKind.Minus) (OperationKind.UnaryOperator, Type: Sy
             Dim fileName = "a.vb"
             Dim syntaxTree = Parse(source, fileName)
             Dim references = DefaultVbReferences.Concat({ValueTupleRef, SystemRuntimeFacadeRef})
-            Dim compilation = CreateCompilationWithMscorlib45AndVBRuntime({syntaxTree}, references:=references, options:=TestOptions.ReleaseDll.WithOverflowChecks(False))
+            Dim compilation = CreateEmptyCompilation({syntaxTree}, references:=references, options:=TestOptions.ReleaseDll.WithOverflowChecks(False))
 
             VerifyOperationTreeAndDiagnosticsForTest(Of UnaryExpressionSyntax)(compilation, fileName, expectedOperationTree, expectedDiagnostics)
         End Sub

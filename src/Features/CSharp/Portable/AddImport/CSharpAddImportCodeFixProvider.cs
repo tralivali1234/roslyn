@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Composition;
 using Microsoft.CodeAnalysis.AddImport;
 using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Packaging;
 using Microsoft.CodeAnalysis.SymbolSearch;
 
@@ -111,6 +112,11 @@ namespace Microsoft.CodeAnalysis.CSharp.AddImport
         /// </summary>
         public const string CS8129 = nameof(CS8129);
 
+        /// <summary>
+        /// Internal symbol inaccessible because public key is wrong
+        /// </summary>
+        public const string CS0281 = nameof(CS0281);
+
         public static ImmutableArray<string> FixableTypeIds =
             ImmutableArray.Create(
                 CS0103,
@@ -122,7 +128,8 @@ namespace Microsoft.CodeAnalysis.CSharp.AddImport
                 CS0616,
                 CS1580,
                 CS1581,
-                CS8129);
+                CS8129,
+                IDEDiagnosticIds.UnboundIdentifierId);
 
         public static ImmutableArray<string> FixableDiagnosticIds =
             FixableTypeIds.Concat(ImmutableArray.Create(
@@ -135,7 +142,8 @@ namespace Microsoft.CodeAnalysis.CSharp.AddImport
                     CS1929,
                     CS1955,
                     CS0428,
-                    CS7036));
+                    CS7036,
+                    CS0281));
     }
 
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = PredefinedCodeFixProviderNames.AddImport), Shared]

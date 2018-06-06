@@ -223,6 +223,15 @@ namespace Microsoft.VisualStudio.LanguageServices.CSharp {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Generate Event Subscription.
+        /// </summary>
+        internal static string Generate_Event_Subscription {
+            get {
+                return ResourceManager.GetString("Generate Event Subscription", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to _Generate XML documentation comments for ///.
         /// </summary>
         internal static string Generate_XML_documentation_comments_for {
@@ -282,6 +291,33 @@ namespace Microsoft.VisualStudio.LanguageServices.CSharp {
         internal static string Ignore_spaces_in_declaration_statements {
             get {
                 return ResourceManager.GetString("Ignore_spaces_in_declaration_statements", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to In arithmetic operators:  *   /   %   +   -   &lt;&lt;   &gt;&gt;   &amp;   ^   |.
+        /// </summary>
+        internal static string In_arithmetic_binary_operators {
+            get {
+                return ResourceManager.GetString("In_arithmetic_binary_operators", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to In other binary operators:  &amp;&amp;   ||   ??.
+        /// </summary>
+        internal static string In_other_binary_operators {
+            get {
+                return ResourceManager.GetString("In_other_binary_operators", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to In relational operators:  &lt;   &gt;   &lt;=   &gt;=   is   as   ==   !=.
+        /// </summary>
+        internal static string In_relational_binary_operators {
+            get {
+                return ResourceManager.GetString("In_relational_binary_operators", resourceCulture);
             }
         }
         

@@ -34,6 +34,10 @@ namespace Microsoft.CodeAnalysis.BuildTasks
         public ManagedCompiler()
         {
             TaskResources = ErrorString.ResourceManager;
+
+            // If there is a crash, the runtime error is output to stderr and
+            // we want MSBuild to print it out regardless of verbosity.
+            LogStandardErrorAsError = true;
         }
 
         #region Properties
@@ -61,6 +65,12 @@ namespace Microsoft.CodeAnalysis.BuildTasks
         {
             set { _store[nameof(EmbeddedFiles)] = value; }
             get { return (ITaskItem[])_store[nameof(EmbeddedFiles)]; }
+        }
+
+        public bool EmbedAllSources
+        {
+            set { _store[nameof(EmbedAllSources)] = value; }
+            get { return _store.GetOrDefault(nameof(EmbedAllSources), false); }
         }
 
         public ITaskItem[] Analyzers
@@ -619,7 +629,7 @@ namespace Microsoft.CodeAnalysis.BuildTasks
 
         internal static void LogErrorOutput(string output, TaskLoggingHelper log)
         {
-            string[] lines = output.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            string[] lines = output.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string line in lines)
             {
                 string trimmedMessage = line.Trim();
@@ -845,6 +855,11 @@ namespace Microsoft.CodeAnalysis.BuildTasks
         /// </summary>
         private void AddEmbeddedFilesToCommandLine(CommandLineBuilderExtension commandLine)
         {
+            if (EmbedAllSources)
+            {
+                commandLine.AppendSwitch("/embed");
+            }
+
             if (EmbeddedFiles != null)
             {
                 foreach (ITaskItem embeddedFile in EmbeddedFiles)
